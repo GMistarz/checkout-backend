@@ -1,153 +1,135 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const bcrypt = require('bcryptjs'); // bcryptjs is Windows-friendly
-const session = require('express-session');
+// server.js
+const express = require("express");
+const cors = require("cors");
+const session = require("express-session");
+const fs = require("fs");
+const bcrypt = require("bcrypt");
+const path = require("path");
 
 const app = express();
-const PORT = 3000;
-const USERS_FILE = path.join(__dirname, 'users.json');
+const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
+// Allowed origins for CORS
+const allowedOrigins = [
+  "https://www.chicagostainless.com",
+  "http://localhost:3000"
+];
 
-app.use(session({
-  secret: 'your-secret-key',
-  resave: false,
-  saveUninitialized: false
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
 }));
 
-function loadUsers() {
-  if (!fs.existsSync(USERS_FILE)) return [];
-  const data = fs.readFileSync(USERS_FILE);
-  return JSON.parse(data);
+app.use(express.json());
+app.use(session({
+  secret: "secret-key",
+  resave: false,
+  saveUninitialized: true
+}));
+
+const USERS_FILE = path.join(__dirname, "users.json");
+const ORDERS_FILE = path.join(__dirname, "orders.json");
+
+function readJSON(file) {
+  if (!fs.existsSync(file)) return [];
+  return JSON.parse(fs.readFileSync(file));
 }
 
-function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+function writeJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-function ensureAdmin(req, res, next) {
-  if (req.session?.user?.role === 'admin') {
-    return next();
-  }
-  return res.status(403).json({ error: 'Forbidden' });
-}
+app.post("/register", async (req, res) => {
+  const { email, password, role = "user", terms = "" } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Missing fields" });
 
-app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  const users = loadUsers();
-  const user = users.find(u => u.email === email);
-  if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) return res.status(401).json({ error: 'Invalid email or password' });
-
-  req.session.user = { email: user.email, role: user.role };
-  res.json({ email: user.email, role: user.role });
-});
-
-app.post('/admin-hash-password', ensureAdmin, async (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(400).json({ error: 'Password required' });
-
-  const hashed = await bcrypt.hash(password, 10);
-  res.json({ hashedPassword: hashed });
-});
-
-app.get('/admin-users', ensureAdmin, (req, res) => {
-  const users = loadUsers();
-  res.json(users);
-});
-
-app.post('/admin-users', ensureAdmin, (req, res) => {
-  const { email, paymentTerms } = req.body;
-  const users = loadUsers();
-  const user = users.find(u => u.email === email);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-
-  user.paymentTerms = paymentTerms;
-  saveUsers(users);
-  res.json({ success: true });
-});
-
-app.post('/admin-create-user', ensureAdmin, async (req, res) => {
-  const { email, name, company, password, paymentTerms } = req.body;
-  const users = loadUsers();
-
+  const users = readJSON(USERS_FILE);
   if (users.find(u => u.email === email)) {
-    return res.status(400).json({ error: 'Email already exists' });
+    return res.status(409).json({ error: "Email already exists" });
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  users.push({
-    email,
-    name,
-    company,
-    password: hashedPassword,
-    paymentTerms,
-    role: 'user'
-  });
-
-  saveUsers(users);
-  res.json({ success: true });
+  users.push({ email, password: hashedPassword, role, terms });
+  writeJSON(USERS_FILE, users);
+  res.json({ message: "User registered successfully" });
 });
 
-app.post('/admin-reset-password', ensureAdmin, async (req, res) => {
-  const { email, newPassword } = req.body;
-  const users = loadUsers();
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const users = readJSON(USERS_FILE);
   const user = users.find(u => u.email === email);
-  if (!user) return res.status(404).json({ error: 'User not found' });
 
-  user.password = await bcrypt.hash(newPassword, 10);
-  saveUsers(users);
-  res.json({ success: true });
-});
-
-const ORDERS_FILE = path.join(__dirname, 'orders.json'); // already declared earlier
-
-function loadOrders() {
-  if (!fs.existsSync(ORDERS_FILE)) return [];
-  const data = fs.readFileSync(ORDERS_FILE);
-  return JSON.parse(data);
-}
-
-app.get('/admin-orders', ensureAdmin, (req, res) => {
-  const orders = loadOrders();
-  res.json(orders);
-});
-
-function saveOrders(orders) {
-  fs.writeFileSync(ORDERS_FILE, JSON.stringify(orders, null, 2));
-}
-
-app.post('/place-order', (req, res) => {
-  const user = req.session.user;
-  if (!user) return res.status(401).json({ error: 'Not logged in' });
-
-  const { billingAddress, shippingAddress, poNumber, shippingMethod, carrierAccount, items } = req.body;
-  if (!billingAddress || !shippingAddress || !poNumber || !shippingMethod || !items?.length) {
-    return res.status(400).json({ error: 'Missing required fields' });
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  const orders = loadOrders();
-  const newOrder = {
-    id: orders.length + 1,
-    email: user.email,
-    billingAddress,
-    shippingAddress,
-    poNumber,
-    shippingMethod,
-    carrierAccount,
-    items,
-    timestamp: new Date().toISOString()
-  };
+  req.session.user = { email: user.email, role: user.role };
+  res.json({ message: "Login successful", role: user.role });
+});
 
-  orders.push(newOrder);
-  saveOrders(orders);
+app.post("/logout", (req, res) => {
+  req.session.destroy();
+  res.json({ message: "Logged out" });
+});
 
-  res.json({ success: true, orderId: newOrder.id });
+app.get("/user-profile", (req, res) => {
+  const { user } = req.session;
+  if (!user) return res.status(401).json({ error: "Not logged in" });
+
+  const users = readJSON(USERS_FILE);
+  const fullUser = users.find(u => u.email === user.email);
+  res.json({ email: fullUser.email, role: fullUser.role, terms: fullUser.terms });
+});
+
+app.get("/users", (req, res) => {
+  const { user } = req.session;
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  const users = readJSON(USERS_FILE);
+  res.json(users);
+});
+
+app.post("/update-terms", (req, res) => {
+  const { user } = req.session;
+  const { email, terms } = req.body;
+
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  const users = readJSON(USERS_FILE);
+  const target = users.find(u => u.email === email);
+  if (!target) return res.status(404).json({ error: "User not found" });
+
+  target.terms = terms;
+  writeJSON(USERS_FILE, users);
+  res.json({ message: "Terms updated" });
+});
+
+app.post("/submit-order", (req, res) => {
+  const { user } = req.session;
+  if (!user) return res.status(401).json({ error: "Not logged in" });
+
+  const order = req.body;
+  order.email = user.email;
+  order.date = new Date().toISOString();
+
+  const orders = readJSON(ORDERS_FILE);
+  orders.push(order);
+  writeJSON(ORDERS_FILE, orders);
+  res.json({ message: "Order received" });
+});
+
+app.get("/orders", (req, res) => {
+  const { user } = req.session;
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  const orders = readJSON(ORDERS_FILE);
+  res.json(orders);
 });
 
 app.listen(PORT, () => {
