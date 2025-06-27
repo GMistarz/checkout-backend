@@ -1,22 +1,14 @@
-// server.js - Using MySQL instead of JSON for user and order storage
-
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
+const fs = require("fs");
 const bcrypt = require("bcrypt");
-const mysql = require("mysql2/promise");
 const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const dbConfig = {
-  host: "localhost",
-  user: "gmistarz_cse",
-  password: "Csec@1280",
-  database: "gmistarz_cse"
-};
-
+// Allowed origins for CORS
 const allowedOrigins = [
   "https://www.chicagostainless.com",
   "http://localhost:3000"
@@ -34,7 +26,10 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Trust proxy required for secure cookies behind a proxy like Render
 app.set("trust proxy", 1);
+
 app.use(session({
   secret: "secret-key",
   resave: false,
@@ -42,32 +37,53 @@ app.use(session({
   cookie: {
     sameSite: "none",
     secure: true,
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: 24 * 60 * 60 * 1000 // 1 day
   }
 }));
+
+const USERS_FILE = path.join(__dirname, "users.json");
+const ORDERS_FILE = path.join(__dirname, "orders.json");
+
+function readJSON(file) {
+  if (!fs.existsSync(file)) return [];
+  return JSON.parse(fs.readFileSync(file));
+}
+
+function writeJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
 
 app.post("/register", async (req, res) => {
   const { email, password, role = "user", terms = "" } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Missing fields" });
 
-  const conn = await mysql.createConnection(dbConfig);
-  const [existing] = await conn.execute("SELECT email FROM users WHERE email = ?", [email]);
-  if (existing.length > 0) return res.status(409).json({ error: "Email already exists" });
+  const users = readJSON(USERS_FILE);
+  if (users.find(u => u.email === email)) {
+    return res.status(409).json({ error: "Email already exists" });
+  }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  await conn.execute("INSERT INTO users (email, password, role, terms) VALUES (?, ?, ?, ?)", [email, hashedPassword, role, terms]);
-  conn.end();
+  users.push({ email, password: hashedPassword, role, terms });
+  writeJSON(USERS_FILE, users);
   res.json({ message: "User registered successfully" });
 });
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
-  conn.end();
+  const users = readJSON(USERS_FILE);
 
-  const user = users[0];
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  console.log("Users loaded from users.json:", users);
+
+  const user = users.find(u => u.email === email);
+
+  if (!user) {
+    console.log("No user found with email:", email);
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    console.log("Password mismatch for:", email);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
@@ -80,69 +96,57 @@ app.post("/logout", (req, res) => {
   res.json({ message: "Logged out" });
 });
 
-app.get("/user-profile", async (req, res) => {
+app.get("/user-profile", (req, res) => {
   const { user } = req.session;
   if (!user) return res.status(401).json({ error: "Not logged in" });
 
-  const conn = await mysql.createConnection(dbConfig);
-  const [rows] = await conn.execute("SELECT email, role, terms FROM users WHERE email = ?", [user.email]);
-  conn.end();
-
-  res.json(rows[0]);
+  const users = readJSON(USERS_FILE);
+  const fullUser = users.find(u => u.email === user.email);
+  res.json({ email: fullUser.email, role: fullUser.role, terms: fullUser.terms });
 });
 
-app.get("/users", async (req, res) => {
+app.get("/users", (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT email, role, terms FROM users");
-  conn.end();
+  const users = readJSON(USERS_FILE);
   res.json(users);
 });
 
-app.post("/update-terms", async (req, res) => {
+app.post("/update-terms", (req, res) => {
   const { user } = req.session;
   const { email, terms } = req.body;
+
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("UPDATE users SET terms = ? WHERE email = ?", [terms, email]);
-  conn.end();
+  const users = readJSON(USERS_FILE);
+  const target = users.find(u => u.email === email);
+  if (!target) return res.status(404).json({ error: "User not found" });
+
+  target.terms = terms;
+  writeJSON(USERS_FILE, users);
   res.json({ message: "Terms updated" });
 });
 
-app.post("/submit-order", async (req, res) => {
+app.post("/submit-order", (req, res) => {
   const { user } = req.session;
   if (!user) return res.status(401).json({ error: "Not logged in" });
 
   const order = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute(
-    "INSERT INTO orders (email, poNumber, shippingMethod, carrierAccount, billingAddress, shippingAddress, items, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [
-      user.email,
-      order.poNumber || "",
-      order.shippingMethod || "",
-      order.carrierAccount || "",
-      order.billingAddress || "",
-      order.shippingAddress || "",
-      JSON.stringify(order.items || []),
-      new Date().toISOString()
-    ]
-  );
-  conn.end();
+  order.email = user.email;
+  order.date = new Date().toISOString();
+
+  const orders = readJSON(ORDERS_FILE);
+  orders.push(order);
+  writeJSON(ORDERS_FILE, orders);
   res.json({ message: "Order received" });
 });
 
-app.get("/orders", async (req, res) => {
+app.get("/orders", (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const conn = await mysql.createConnection(dbConfig);
-  const [orders] = await conn.execute("SELECT * FROM orders");
-  conn.end();
-  orders.forEach(o => o.items = JSON.parse(o.items || "[]"));
+  const orders = readJSON(ORDERS_FILE);
   res.json(orders);
 });
 
