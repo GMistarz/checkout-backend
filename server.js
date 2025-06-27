@@ -29,8 +29,13 @@ app.use(express.json());
 app.use(session({
   secret: "secret-key",
   resave: false,
-  saveUninitialized: true
+  saveUninitialized: false,
+  cookie: {
+    sameSite: "none",
+    secure: true
+  }
 }));
+
 
 const USERS_FILE = path.join(__dirname, "users.json");
 const ORDERS_FILE = path.join(__dirname, "orders.json");
