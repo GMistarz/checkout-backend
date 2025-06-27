@@ -26,13 +26,18 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Trust proxy required for secure cookies behind a proxy like Render
+app.set("trust proxy", 1);
+
 app.use(session({
   secret: "secret-key",
   resave: false,
   saveUninitialized: false,
   cookie: {
     sameSite: "none",
-    secure: true
+    secure: true,
+    maxAge: 24 * 60 * 60 * 1000 // 1 day
   }
 }));
 
