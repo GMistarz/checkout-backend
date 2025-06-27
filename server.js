@@ -36,7 +36,6 @@ app.use(session({
   }
 }));
 
-
 const USERS_FILE = path.join(__dirname, "users.json");
 const ORDERS_FILE = path.join(__dirname, "orders.json");
 
@@ -68,18 +67,18 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const users = readJSON(USERS_FILE);
 
-  console.log("🔍 Users loaded from users.json:", users);
+  console.log("Users loaded from users.json:", users);
 
   const user = users.find(u => u.email === email);
 
   if (!user) {
-    console.log("❌ No user found with email:", email);
+    console.log("No user found with email:", email);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
-    console.log("❌ Password mismatch for:", email);
+    console.log("Password mismatch for:", email);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
