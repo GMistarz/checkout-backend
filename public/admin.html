@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body style="font-family: Arial; background: #f9f9f9; padding: 20px;">
+
+  <h1>Admin Login</h1>
+
+  <div id="loginBox" style="max-width: 400px; background: white; padding: 20px; border-radius: 6px;">
+    <input id="email" placeholder="Email" type="email" style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+    <input id="password" placeholder="Password" type="password" style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+    <button onclick="login()" style="width: 100%; padding: 10px; background: #007bff; color: white;">Login</button>
+  </div>
+
+  <div id="adminPanel" style="display: none; margin-top: 20px;">
+    <h2>User Management</h2>
+    <div>
+      <table border="1" id="userTable" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Company</th>
+            <th>Payment Terms</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <h2 style="margin-top: 40px;">Submitted Orders</h2>
+      <div id="ordersContainer" style="max-height: 300px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #ccc;">
+        <table id="ordersTable" border="1" style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User</th>
+              <th>PO#</th>
+              <th>Billing</th>
+              <th>Shipping</th>
+              <th>Total</th>
+              <th>Date</th>
+              </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>Create New User</h3>
+    <input id="newEmail" placeholder="Email" style="width: 200px;" />
+    <input id="newName" placeholder="Name" style="width: 150px;" />
+    <input id="newCompany" placeholder="Company" style="width: 150px;" />
+    <input id="newPassword" placeholder="Password" type="password" style="width: 150px;" />
+    <input id="newTerms" placeholder="Payment Terms" style="width: 120px;" />
+    <button onclick="createUser()">Create</button>
+  </div>
+
+  <script>
+    async function login() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Login failed");
+
+      if (data.role !== 'admin') return alert("Access denied. Not admin.");
+
+      document.getElementById("loginBox").style.display = "none";
+      document.getElementById("adminPanel").style.display = "block";
+      loadUsers();
+      loadOrders();
+    }
+
+    async function loadUsers() {
+      const res = await fetch("/admin-users");
+      const users = await res.json();
+      const tbody = document.querySelector("#userTable tbody");
+      tbody.innerHTML = "";
+      users.forEach(u => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${u.email}</td>
+          <td>${u.name}</td>
+          <td>${u.company}</td>
+          <td>
+            <input value="${u.paymentTerms || ''}" data-email="${u.email}" style="width: 120px;" />
+          </td>
+          <td>
+            <button onclick="updateTerms('${u.email}')">Update Terms</button>
+            <button onclick="resetPassword('${u.email}')">Reset Password</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+      
+  async function loadOrders() {
+    const res = await fetch("/admin-orders");
+    const orders = await res.json();
+    const tbody = document.querySelector("#ordersTable tbody");
+    tbody.innerHTML = "";
+
+    orders.forEach(order => {
+      const total = order.items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${order.id}</td>
+        <td>${order.email}</td>
+        <td>${order.poNumber}</td>
+        <td>${order.billingAddress.replace(/\n/g, "<br/>")}</td>
+        <td>${order.shippingAddress.replace(/\n/g, "<br/>")}</td>
+        <td>$${total.toFixed(2)}</td>
+        <td>${new Date(order.timestamp).toLocaleString()}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+    async function updateTerms(email) {
+      const input = document.querySelector(`input[data-email="${email}"]`);
+      const paymentTerms = input.value.trim();
+      const res = await fetch("/admin-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, paymentTerms })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Failed to update");
+      alert("Payment terms updated.");
+    }
+
+    async function resetPassword(email) {
+      const newPassword = prompt("Enter new password for " + email);
+      if (!newPassword) return;
+
+      const res = await fetch("/admin-reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, newPassword })
+      });
+
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Failed to reset");
+      alert("Password reset.");
+    }
+
+    async function createUser() {
+      const email = document.getElementById("newEmail").value.trim();
+      const name = document.getElementById("newName").value.trim();
+      const company = document.getElementById("newCompany").value.trim();
+      const password = document.getElementById("newPassword").value.trim();
+      const paymentTerms = document.getElementById("newTerms").value.trim();
+
+      if (!email || !password) return alert("Email and password required.");
+
+      const res = await fetch("/admin-create-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name, company, password, paymentTerms })
+      });
+
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Failed to create user.");
+      alert("User created.");
+      loadUsers();
+    }
+  </script>
+</body>
+</html>

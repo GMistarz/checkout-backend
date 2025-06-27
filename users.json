@@ -1,0 +1,10 @@
+[
+  {
+    "email": "admin@example.com",
+    "name": "Admin",
+    "company": "Main Office",
+    "password": "$2a$10$2crJJrUATxv4rTPEckgMBe90eFMGG3A0gFa7OgEM7k9ZdQvh8aK7y",
+    "paymentTerms": "Net 30",
+    "role": "admin"
+  }
+]

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Checkout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body style="font-family: Arial; margin: 20px; background: #f9f9f9;">
+  <h1 style="text-align: center;">Checkout</h1>
+
+  <div id="loginBox" style="max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px;">
+    <input type="email" id="email" placeholder="Email" style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+    <input type="password" id="password" placeholder="Password" style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+    <button onclick="login()" style="width: 100%; padding: 10px; background: #28a745; color: white;">Login</button>
+  </div>
+
+  <form id="checkoutForm" style="display: none; max-width: 1000px; margin: 20px auto; background: white; padding: 20px; border-radius: 8px;" onsubmit="submitOrder(event)">
+    <h2>Billing</h2>
+    <textarea id="billingAddress" required placeholder="Billing Address" style="width: 100%; padding: 10px;"></textarea>
+
+    <h2>Shipping</h2>
+    <textarea id="shippingAddress" required placeholder="Shipping Address" style="width: 100%; padding: 10px;"></textarea>
+
+    <label>PO Number (required)</label>
+    <input type="text" id="poNumber" required style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+
+    <label>Shipping Method</label>
+    <select id="shippingMethod" onchange="toggleCarrierField()" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+      <option value="UPS Ground">UPS Ground</option>
+      <option value="UPS Next Day">UPS Next Day</option>
+      <option value="3rd Party">3rd Party Billing</option>
+    </select>
+
+    <div id="carrierSection" style="display: none;">
+      <label>Carrier Account #</label>
+      <input type="text" id="carrierAccount" style="width: 100%; padding: 10px; margin-bottom: 10px;" />
+    </div>
+
+    <h2>Order Summary</h2>
+    <table style="width: 100%; border-collapse: collapse;" id="cartTable">
+      <thead>
+        <tr>
+          <th style="border: 1px solid #ccc; padding: 5px;">Part</th>
+          <th style="border: 1px solid #ccc; padding: 5px;">Qty</th>
+          <th style="border: 1px solid #ccc; padding: 5px;">Price</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <p><strong>Total:</strong> $<span id="orderTotal">0.00</span></p>
+    <button type="submit" style="width: 100%; padding: 15px; background: #007bff; color: white;">Place Order</button>
+  </form>
+
+  <script>
+    let userEmail = '';
+    let cart = [
+      { part: "ABC123", qty: 2, price: 15.0 },
+      { part: "XYZ456", qty: 1, price: 40.0 }
+    ];
+
+    function toggleCarrierField() {
+      const method = document.getElementById("shippingMethod").value;
+      document.getElementById("carrierSection").style.display = method === "3rd Party" ? "block" : "none";
+    }
+
+    async function login() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const res = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Login failed");
+
+      userEmail = email;
+      document.getElementById("loginBox").style.display = "none";
+      document.getElementById("checkoutForm").style.display = "block";
+      renderCart();
+    }
+
+    function renderCart() {
+      const tbody = document.querySelector("#cartTable tbody");
+      tbody.innerHTML = "";
+      let total = 0;
+      for (let item of cart) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td style="border: 1px solid #ccc; padding: 5px;">${item.part}</td>
+          <td style="border: 1px solid #ccc; padding: 5px;">${item.qty}</td>
+          <td style="border: 1px solid #ccc; padding: 5px;">$${(item.price * item.qty).toFixed(2)}</td>
+        `;
+        tbody.appendChild(row);
+        total += item.qty * item.price;
+      }
+      document.getElementById("orderTotal").textContent = total.toFixed(2);
+    }
+
+    async function submitOrder(e) {
+      e.preventDefault();
+      const order = {
+        email: userEmail,
+        billingAddress: document.getElementById("billingAddress").value,
+        shippingAddress: document.getElementById("shippingAddress").value,
+        poNumber: document.getElementById("poNumber").value,
+        shippingMethod: document.getElementById("shippingMethod").value,
+        carrierAccount: document.getElementById("carrierAccount").value || null,
+        items: cart
+      };
+
+      const res = await fetch("/place-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(order)
+      });
+
+      const data = await res.json();
+      if (!res.ok) return alert(data.error || "Order failed");
+      alert("Order placed successfully!");
+    }
+  </script>
+</body>
+</html>
