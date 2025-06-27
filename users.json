@@ -1,10 +1,8 @@
 [
   {
     "email": "admin@example.com",
-    "name": "Admin",
-    "company": "Main Office",
-    "password": "$2a$10$2crJJrUATxv4rTPEckgMBe90eFMGG3A0gFa7OgEM7k9ZdQvh8aK7y",
-    "paymentTerms": "Net 30",
-    "role": "admin"
+    "password": "$2b$10$VxyA4TJQ1IkE0sB6VgqBeOfuFJx4C9Uv3ksBKGL8c8xoSHQ9VQAYu",
+    "role": "admin",
+    "terms": "Net 30"
   }
 ]
