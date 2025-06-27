@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard</title>
+</head>
+<body style="font-family: Arial, sans-serif; background: #f4f4f4; padding: 20px;">
+
+  <h1 style="text-align: center;">Admin Dashboard</h1>
+
+  <div style="max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px;">
+    <h2>Users</h2>
+    <table id="usersTable" style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+      <thead>
+        <tr>
+          <th style="border: 1px solid #ccc; padding: 8px;">Email</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">Role</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">Terms</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h2>Orders</h2>
+    <table id="ordersTable" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th style="border: 1px solid #ccc; padding: 8px;">Email</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">Date</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">PO#</th>
+          <th style="border: 1px solid #ccc; padding: 8px;">Items</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    const backend = "https://checkout-backend-jvyx.onrender.com";
+
+    async function fetchUsers() {
+      const res = await fetch(`${backend}/users`, { credentials: "include" });
+      if (!res.ok) return alert("Not authorized");
+      const users = await res.json();
+
+      const tbody = document.querySelector("#usersTable tbody");
+      tbody.innerHTML = "";
+      users.forEach(user => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td style="border: 1px solid #ccc; padding: 8px;">${user.email}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">${user.role}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">
+            <input value="${user.terms || ""}" id="terms-${user.email}" style="width: 100%;" />
+          </td>
+          <td style="border: 1px solid #ccc; padding: 8px;">
+            <button onclick="updateTerms('${user.email}')">Update</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    async function updateTerms(email) {
+      const terms = document.getElementById(`terms-${email}`).value;
+      const res = await fetch(`${backend}/update-terms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, terms })
+      });
+      const data = await res.json();
+      alert(data.message || data.error);
+    }
+
+    async function fetchOrders() {
+      const res = await fetch(`${backend}/orders`, { credentials: "include" });
+      if (!res.ok) return;
+      const orders = await res.json();
+
+      const tbody = document.querySelector("#ordersTable tbody");
+      tbody.innerHTML = "";
+      orders.forEach(order => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td style="border: 1px solid #ccc; padding: 8px;">${order.email}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">${new Date(order.date).toLocaleString()}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">${order.poNumber || ""}</td>
+          <td style="border: 1px solid #ccc; padding: 8px;">
+            ${order.items?.map(i => `${i.partNo} (x${i.quantity})`).join(", ") || ""}
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    async function checkAdminAccess() {
+      const res = await fetch(`${backend}/user-profile`, { credentials: "include" });
+      if (!res.ok) {
+        alert("You must be logged in as admin");
+        window.location.href = "admin.html";
+      } else {
+        const data = await res.json();
+        if (data.role !== "admin") {
+          alert("Access denied. Admins only.");
+          window.location.href = "admin.html";
+        }
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      await checkAdminAccess();
+      await fetchUsers();
+      await fetchOrders();
+    });
+  </script>
+</body>
+</html>
