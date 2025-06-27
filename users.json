@@ -1,7 +1,7 @@
 [
   {
     "email": "admin@example.com",
-    "password": "$2b$10$VxyA4TJQ1IkE0sB6VgqBeOfuFJx4C9Uv3ksBKGL8c8xoSHQ9VQAYu",
+    "password": "$2b$10$zJKptFMQbt5u9NgIJmxi0uMg0pAaV83wGlmV0zBL1Kw.4ZyQwHOFO",
     "role": "admin",
     "terms": "Net 30"
   }
