@@ -1,4 +1,3 @@
-// server.js
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -63,9 +62,19 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   const users = readJSON(USERS_FILE);
+
+  console.log("🔍 Users loaded from users.json:", users);
+
   const user = users.find(u => u.email === email);
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  if (!user) {
+    console.log("❌ No user found with email:", email);
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    console.log("❌ Password mismatch for:", email);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
