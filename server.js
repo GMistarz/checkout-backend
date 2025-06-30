@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 const dbConfig = {
   host: "gmistarz_cse.hgns1.hostgator.com",
-  user: "gmistarz",
+  user: "gmistarz_user",
   password: "Csec@1280",
   database: "gmistarz_cse"
 };
