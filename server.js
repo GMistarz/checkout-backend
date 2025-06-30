@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const dbConfig = {
-  host: "gmistarz_cse.mysql.hgns1.hostgator.com.com",
+  host: "gmistarz_cse.mysql.hgns1.hostgator.com",
   user: "gmistarz_cse",
   password: "Csec@1280",
   database: "gmistarz_cse"
