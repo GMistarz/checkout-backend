@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const dbConfig = {
-  host: "Mysql@192.254.232.38",
+  host: "192.254.232.38",
   user: "gmistarz_user",
   password: "Csec@1280",
   database: "gmistarz_cse"
