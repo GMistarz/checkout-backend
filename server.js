@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 const dbConfig = {
   host: "192.254.232.38",
-  user: "gmistarz_user",
+  user: "gmistarz_cse",
   password: "Csec@1280",
   database: "gmistarz_cse"
 };
