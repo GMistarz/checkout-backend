@@ -170,6 +170,23 @@ app.post("/add-company", async (req, res) => {
   }
 });
 
+app.get("/companies", async (req, res) => {
+  const { user } = req.session;
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    const [companies] = await conn.execute("SELECT * FROM companies");
+    conn.end();
+
+    res.json(companies);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to retrieve companies" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
