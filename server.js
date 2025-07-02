@@ -44,6 +44,35 @@ app.use(session({
   }
 }));
 
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  const conn = await mysql.createConnection(dbConfig);
+  const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
+  conn.end();
+
+  const user = users[0];
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  req.session.user = { email: user.email, role: user.role, companyId: user.company_id };
+  res.json({ message: "Login successful", role: user.role });
+});
+
+app.get("/user-profile", async (req, res) => {
+  const { user } = req.session;
+  if (!user) return res.status(401).json({ error: "Not logged in" });
+
+  const conn = await mysql.createConnection(dbConfig);
+  const [rows] = await conn.execute(
+    "SELECT email, role, terms, company_id FROM users WHERE email = ?",
+    [user.email]
+  );
+  conn.end();
+
+  res.json(rows[0]);
+});
+
 app.post("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) return res.status(500).json({ error: "Logout failed" });
