@@ -44,133 +44,12 @@ app.use(session({
   }
 }));
 
-app.post("/register", async (req, res) => {
-  const { email, password, role = "user", terms = "", companyId = null } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Missing fields" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [existing] = await conn.execute("SELECT email FROM users WHERE email = ?", [email]);
-  if (existing.length > 0) return res.status(409).json({ error: "Email already exists" });
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  await conn.execute(
-    "INSERT INTO users (email, password, role, terms, company_id) VALUES (?, ?, ?, ?, ?)",
-    [email, hashedPassword, role, terms, companyId]
-  );
-  conn.end();
-  res.json({ message: "User registered successfully" });
-});
-
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
-  conn.end();
-
-  const user = users[0];
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
-
-  req.session.user = { email: user.email, role: user.role, companyId: user.company_id };
-  res.json({ message: "Login successful", role: user.role });
-});
-
 app.post("/logout", (req, res) => {
-  req.session.destroy();
-  res.json({ message: "Logged out" });
-});
-
-app.get("/user-profile", async (req, res) => {
-  const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [rows] = await conn.execute(
-    "SELECT email, role, terms, company_id FROM users WHERE email = ?",
-    [user.email]
-  );
-  conn.end();
-
-  res.json(rows[0]);
-});
-
-app.get("/users", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT * FROM users");
-  conn.end();
-  res.json(users);
-});
-
-app.post("/update-terms", async (req, res) => {
-  const { user } = req.session;
-  const { email, terms } = req.body;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("UPDATE users SET terms = ? WHERE email = ?", [terms, email]);
-  conn.end();
-  res.json({ message: "Terms updated" });
-});
-
-app.post("/submit-order", async (req, res) => {
-  const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  const order = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute(
-    "INSERT INTO orders (email, poNumber, shippingMethod, carrierAccount, billingAddress, shippingAddress, items, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [
-      user.email,
-      order.poNumber || "",
-      order.shippingMethod || "",
-      order.carrierAccount || "",
-      order.billingAddress || "",
-      order.shippingAddress || "",
-      JSON.stringify(order.items || []),
-      new Date().toISOString()
-    ]
-  );
-  conn.end();
-  res.json({ message: "Order received" });
-});
-
-app.get("/orders", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [orders] = await conn.execute("SELECT * FROM orders");
-  conn.end();
-  orders.forEach(o => o.items = JSON.parse(o.items || "[]"));
-  res.json(orders);
-});
-
-app.post("/add-company", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const { name, address1, address2, city, state, zip, country, terms } = req.body;
-  if (!name || !address1 || !city || !state || !zip || !country || !terms) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    await conn.execute(
-      `INSERT INTO companies (name, address1, address2, city, state, zip, country, terms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, address1, address2 || "", city, state, zip, country, terms]
-    );
-    conn.end();
-    res.json({ message: "Company added successfully" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to add company" });
-  }
+  req.session.destroy((err) => {
+    if (err) return res.status(500).json({ error: "Logout failed" });
+    res.clearCookie("connect.sid", { path: "/" });
+    res.json({ message: "Logged out" });
+  });
 });
 
 app.get("/companies", async (req, res) => {
@@ -189,51 +68,6 @@ app.get("/companies", async (req, res) => {
   }
 });
 
-app.post("/add-shipto", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const { companyId, address1, address2, city, state, zip, country, isDefault } = req.body;
-  if (!companyId || !address1 || !city || !state || !zip || !country) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    if (isDefault) {
-      await conn.execute("UPDATE shipto SET is_default = 0 WHERE company_id = ?", [companyId]);
-    }
-    await conn.execute(
-      `INSERT INTO shipto (company_id, address1, address2, city, state, zip, country, is_default)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [companyId, address1, address2 || "", city, state, zip, country, isDefault ? 1 : 0]
-    );
-    conn.end();
-    res.json({ message: "Ship-to address added" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to add ship-to address" });
-  }
-});
-
-app.get("/shipto/:companyId", async (req, res) => {
-  const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  const { companyId } = req.params;
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    const [addresses] = await conn.execute(
-      "SELECT * FROM shipto WHERE company_id = ?",
-      [companyId]
-    );
-    conn.end();
-    res.json(addresses);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to retrieve ship-to addresses" });
-  }
-});
-
-// Edit user
 app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -252,7 +86,6 @@ app.post("/edit-user", async (req, res) => {
   }
 });
 
-// Delete user
 app.post("/delete-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -268,7 +101,6 @@ app.post("/delete-user", async (req, res) => {
   }
 });
 
-// Edit company
 app.post("/edit-company", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -287,7 +119,6 @@ app.post("/edit-company", async (req, res) => {
   }
 });
 
-// Delete company
 app.post("/delete-company", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -303,7 +134,6 @@ app.post("/delete-company", async (req, res) => {
   }
 });
 
-// Set default ship-to address
 app.post("/set-default-shipto", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -320,7 +150,6 @@ app.post("/set-default-shipto", async (req, res) => {
   }
 });
 
-// Get users by company
 app.get("/company-users/:companyId", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -334,6 +163,10 @@ app.get("/company-users/:companyId", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Failed to retrieve users" });
   }
+});
+
+app.get("/", (req, res) => {
+  res.redirect("/admin-dashboard.html");
 });
 
 app.listen(PORT, () => {
