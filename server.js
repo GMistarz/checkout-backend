@@ -1,192 +1,172 @@
-// server.js - Using MySQL instead of JSON for user and order storage
-
 const express = require("express");
+const app = express();
 const cors = require("cors");
 const session = require("express-session");
-const bcrypt = require("bcrypt");
-const mysql = require("mysql2/promise");
+const fs = require("fs");
 const path = require("path");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-const dbConfig = {
-  host: "192.254.232.38",
-  user: "gmistarz_cse",
-  password: "Csec@1280",
-  database: "gmistarz_cse"
-};
-
-const allowedOrigins = [
-  "https://www.chicagostainless.com",
-  "http://localhost:3000"
-];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: ["https://www.chicagostainless.com", "http://localhost:3000"],
   credentials: true
 }));
 
 app.use(express.json());
-app.set("trust proxy", 1);
 app.use(session({
-  secret: "secret-key",
+  secret: "secret123",
   resave: false,
-  saveUninitialized: false,
-  cookie: {
-    sameSite: "none",
-    secure: true,
-    maxAge: 24 * 60 * 60 * 1000
-  }
+  saveUninitialized: true
 }));
 
-app.post("/register", async (req, res) => {
-  const { email, password, role = "user", terms = "" } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Missing fields" });
+const DATA_PATH = path.join(__dirname, "data");
+const companiesFile = path.join(DATA_PATH, "companies.json");
 
-  const conn = await mysql.createConnection(dbConfig);
-  const [existing] = await conn.execute("SELECT email FROM users WHERE email = ?", [email]);
-  if (existing.length > 0) return res.status(409).json({ error: "Email already exists" });
+// Utility: Load JSON file
+function loadJSON(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+  const content = fs.readFileSync(filePath);
+  return JSON.parse(content);
+}
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-  await conn.execute("INSERT INTO users (email, password, role, terms) VALUES (?, ?, ?, ?)", [email, hashedPassword, role, terms]);
-  conn.end();
-  res.json({ message: "User registered successfully" });
-});
+// Utility: Save JSON file
+function saveJSON(filePath, data) {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
 
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
-  conn.end();
-
-  const user = users[0];
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ error: "Invalid credentials" });
-  }
-
-  req.session.user = { email: user.email, role: user.role };
-  res.json({ message: "Login successful", role: user.role });
-});
-
-app.post("/logout", (req, res) => {
-  req.session.destroy();
-  res.json({ message: "Logged out" });
-});
-
-app.get("/user-profile", async (req, res) => {
-  const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [rows] = await conn.execute("SELECT email, role, terms FROM users WHERE email = ?", [user.email]);
-  conn.end();
-
-  res.json(rows[0]);
-});
-
-app.get("/users", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [users] = await conn.execute("SELECT email, role, terms FROM users");
-  conn.end();
-  res.json(users);
-});
-
-app.post("/update-terms", async (req, res) => {
-  const { user } = req.session;
-  const { email, terms } = req.body;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute("UPDATE users SET terms = ? WHERE email = ?", [terms, email]);
-  conn.end();
-  res.json({ message: "Terms updated" });
-});
-
-app.post("/submit-order", async (req, res) => {
-  const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  const order = req.body;
-  const conn = await mysql.createConnection(dbConfig);
-  await conn.execute(
-    "INSERT INTO orders (email, poNumber, shippingMethod, carrierAccount, billingAddress, shippingAddress, items, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [
-      user.email,
-      order.poNumber || "",
-      order.shippingMethod || "",
-      order.carrierAccount || "",
-      order.billingAddress || "",
-      order.shippingAddress || "",
-      JSON.stringify(order.items || []),
-      new Date().toISOString()
-    ]
-  );
-  conn.end();
-  res.json({ message: "Order received" });
-});
-
-app.get("/orders", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const conn = await mysql.createConnection(dbConfig);
-  const [orders] = await conn.execute("SELECT * FROM orders");
-  conn.end();
-  orders.forEach(o => o.items = JSON.parse(o.items || "[]"));
-  res.json(orders);
-});
-
-// ADD-COMPANY ROUTE
-app.post("/add-company", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
+// Route: Add a company
+app.post("/add-company", (req, res) => {
   const { name, address1, address2, city, state, zip, country, terms } = req.body;
+
   if (!name || !address1 || !city || !state || !zip || !country || !terms) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    await conn.execute(
-      `INSERT INTO companies (name, address1, address2, city, state, zip, country, terms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, address1, address2 || "", city, state, zip, country, terms]
-    );
-    conn.end();
-    res.json({ message: "Company added successfully" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to add company" });
-  }
+  const companies = loadJSON(companiesFile);
+
+  const newCompany = {
+    id: Date.now().toString(),
+    name,
+    address1,
+    address2,
+    city,
+    state,
+    zip,
+    country,
+    terms,
+    users: [],
+    shipToAddresses: []
+  };
+
+  companies.push(newCompany);
+  saveJSON(companiesFile, companies);
+  res.json({ message: "Company added successfully" });
 });
 
-app.get("/companies", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    const [companies] = await conn.execute("SELECT * FROM companies");
-    conn.end();
-
-    res.json(companies);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to retrieve companies" });
-  }
+// Route: Get all companies
+app.get("/companies", (req, res) => {
+  const companies = loadJSON(companiesFile);
+  res.json(companies);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+// Route: Edit company
+app.post("/edit-company", (req, res) => {
+  const { id, name, address1, address2, city, state, zip, country, terms } = req.body;
+  const companies = loadJSON(companiesFile);
+
+  const company = companies.find(c => c.id === id);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  Object.assign(company, { name, address1, address2, city, state, zip, country, terms });
+  saveJSON(companiesFile, companies);
+  res.json({ message: "Company updated successfully" });
 });
+
+// Route: Delete company
+app.post("/delete-company", (req, res) => {
+  const { id } = req.body;
+  let companies = loadJSON(companiesFile);
+  companies = companies.filter(c => c.id !== id);
+  saveJSON(companiesFile, companies);
+  res.json({ message: "Company deleted successfully" });
+});
+
+// Route: Add user to company
+app.post("/add-user", (req, res) => {
+  const { companyId, firstName, lastName, email, phone, password } = req.body;
+
+  if (!companyId || !firstName || !lastName || !email || !phone || !password) {
+    return res.status(400).json({ error: "Missing user fields" });
+  }
+
+  const companies = loadJSON(companiesFile);
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  const newUser = { id: Date.now().toString(), firstName, lastName, email, phone, password };
+  company.users.push(newUser);
+  saveJSON(companiesFile, companies);
+  res.json({ message: "User added successfully" });
+});
+
+// Route: Edit user in company
+app.post("/edit-user", (req, res) => {
+  const { companyId, userId, firstName, lastName, email, phone, password } = req.body;
+  const companies = loadJSON(companiesFile);
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  const user = company.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  Object.assign(user, { firstName, lastName, email, phone, password });
+  saveJSON(companiesFile, companies);
+  res.json({ message: "User updated successfully" });
+});
+
+// Route: Delete user from company
+app.post("/delete-user", (req, res) => {
+  const { companyId, userId } = req.body;
+  const companies = loadJSON(companiesFile);
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  company.users = company.users.filter(u => u.id !== userId);
+  saveJSON(companiesFile, companies);
+  res.json({ message: "User deleted successfully" });
+});
+
+// Route: Add ship-to address
+app.post("/add-shipto", (req, res) => {
+  const { companyId, label, address1, address2, city, state, zip, country, isDefault } = req.body;
+
+  if (!companyId || !label || !address1 || !city || !state || !zip || !country) {
+    return res.status(400).json({ error: "Missing ship-to fields" });
+  }
+
+  const companies = loadJSON(companiesFile);
+  const company = companies.find(c => c.id === companyId);
+  if (!company) return res.status(404).json({ error: "Company not found" });
+
+  if (isDefault) {
+    company.shipToAddresses.forEach(addr => addr.isDefault = false);
+  }
+
+  const newAddress = {
+    id: Date.now().toString(),
+    label,
+    address1,
+    address2,
+    city,
+    state,
+    zip,
+    country,
+    isDefault: !!isDefault
+  };
+
+  company.shipToAddresses.push(newAddress);
+  saveJSON(companiesFile, companies);
+  res.json({ message: "Ship-to address added successfully" });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
