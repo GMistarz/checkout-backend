@@ -146,7 +146,30 @@ app.get("/orders", async (req, res) => {
   res.json(orders);
 });
 
+// ADD-COMPANY ROUTE
+app.post("/add-company", async (req, res) => {
+  const { user } = req.session;
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  const { name, address1, address2, city, state, zip, country, terms } = req.body;
+  if (!name || !address1 || !city || !state || !zip || !country || !terms) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    await conn.execute(
+      `INSERT INTO companies (name, address1, address2, city, state, zip, country, terms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, address1, address2 || "", city, state, zip, country, terms]
+    );
+    conn.end();
+    res.json({ message: "Company added successfully" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to add company" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
-
