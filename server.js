@@ -116,16 +116,9 @@ app.post("/edit-company", async (req, res) => {
   }
 });
 
-app.post('/add-user', async (req, res) => {
-  const {
-    email,
-    firstName,
-    lastName,
-    phone,
-    role,
-    terms,
-    companyId
-  } = req.body;
+// Add New User
+app.post('/add-user', (req, res) => {
+  const { email, firstName, lastName, phone, role, terms, companyId } = req.body;
 
   if (!email || !companyId) {
     return res.status(400).json({ error: 'Email and companyId are required.' });
@@ -136,7 +129,7 @@ app.post('/add-user', async (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
-  db.query(sql, [email, firstName, lastName, phone, role, terms, companyId], (err) => {
+  db.query(sql, [email, firstName, lastName, phone, role, terms, companyId], (err, result) => {
     if (err) {
       console.error('Failed to add user:', err);
       return res.status(500).json({ error: 'Failed to add user' });
@@ -145,6 +138,7 @@ app.post('/add-user', async (req, res) => {
   });
 });
 
+// Edit User
 app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -164,6 +158,7 @@ app.post("/edit-user", async (req, res) => {
 
 });
 
+// Delete User
 app.post("/delete-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -179,6 +174,7 @@ app.post("/delete-user", async (req, res) => {
   }
 });
 
+// Delete Company
 app.post("/delete-company", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -194,6 +190,7 @@ app.post("/delete-company", async (req, res) => {
   }
 });
 
+// Set Default Ship-To
 app.post("/set-default-shipto", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
