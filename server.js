@@ -97,6 +97,24 @@ app.get("/companies", async (req, res) => {
   }
 });
 
+app.post("/edit-company", async (req, res) => {
+  const { user } = req.session;
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+
+  const { id, name, logo, address1, address2, city, state, zip, country, terms } = req.body;
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    await conn.execute(
+      `UPDATE companies SET name = ?, logo = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
+      [name, logo, address1, address2, city, state, zip, country, terms, id]
+    );
+    conn.end();
+    res.json({ message: "Company updated" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update company" });
+  }
+});
+
 app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -127,24 +145,6 @@ app.post("/delete-user", async (req, res) => {
     res.json({ message: "User deleted" });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete user" });
-  }
-});
-
-app.post("/edit-company", async (req, res) => {
-  const { user } = req.session;
-  if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
-
-  const { id, name, address1, address2, city, state, zip, country, terms } = req.body;
-  try {
-    const conn = await mysql.createConnection(dbConfig);
-    await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
-      [name, address1, address2, city, state, zip, country, terms, id]
-    );
-    conn.end();
-    res.json({ message: "Company updated" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to update company" });
   }
 });
 
