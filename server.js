@@ -116,6 +116,35 @@ app.post("/edit-company", async (req, res) => {
   }
 });
 
+app.post('/add-user', async (req, res) => {
+  const {
+    email,
+    firstName,
+    lastName,
+    phone,
+    role,
+    terms,
+    companyId
+  } = req.body;
+
+  if (!email || !companyId) {
+    return res.status(400).json({ error: 'Email and companyId are required.' });
+  }
+
+  const sql = `
+    INSERT INTO users (email, first_name, last_name, phone, role, terms, company_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(sql, [email, firstName, lastName, phone, role, terms, companyId], (err) => {
+    if (err) {
+      console.error('Failed to add user:', err);
+      return res.status(500).json({ error: 'Failed to add user' });
+    }
+    res.sendStatus(200);
+  });
+});
+
 app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
