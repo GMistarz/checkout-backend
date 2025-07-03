@@ -3,6 +3,8 @@ const cors = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise");
+const multer = require("multer");
+const fs = require("fs");
 const path = require("path");
 
 const app = express();
@@ -32,6 +34,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(express.static("uploads"));
 app.set("trust proxy", 1);
 app.use(session({
   secret: "secret-key",
@@ -43,6 +46,11 @@ app.use(session({
     maxAge: 24 * 60 * 60 * 1000
   }
 }));
+
+const upload = multer({
+  dest: "uploads/",
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -97,17 +105,26 @@ app.get("/companies", async (req, res) => {
   }
 });
 
-app.post("/edit-company", async (req, res) => {
+app.post("/edit-company", upload.single("logo"), async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const { id, name, logo, address1, address2, city, state, zip, country, terms } = req.body;
+  const { id, name, address1, address2, city, state, zip, country, terms } = req.body;
+  const logo = req.file ? `/` + req.file.filename : null;
+
   try {
     const conn = await mysql.createConnection(dbConfig);
-    await conn.execute(
-      `UPDATE companies SET name = ?, logo = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
-      [name, logo, address1, address2, city, state, zip, country, terms, id]
-    );
+    if (logo) {
+      await conn.execute(
+        `UPDATE companies SET name = ?, logo = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
+        [name, logo, address1, address2, city, state, zip, country, terms, id]
+      );
+    } else {
+      await conn.execute(
+        `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
+        [name, address1, address2, city, state, zip, country, terms, id]
+      );
+    }
     conn.end();
     res.json({ message: "Company updated" });
   } catch (err) {
