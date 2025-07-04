@@ -16,9 +16,10 @@ const dbConfig = {
 };
 
 const allowedOrigins = [
-  "https://www.chicagostainless.com",
-  "http://localhost:3000"
+  "https://www.chicagostainless.com", 
+  "https://checkout-backend-jvyx.onrender.com"
 ];
+
 
 app.use(cors({
   origin: function (origin, callback) {
