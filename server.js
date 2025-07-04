@@ -118,18 +118,19 @@ app.post("/edit-company", async (req, res) => {
 
 // Add New User
 app.post('/add-user', async (req, res) => {
-  const { email, firstName, lastName, phone, role, companyId } = req.body;
+  const { email, firstName, lastName, phone, role, password, companyId } = req.body;
 
-  if (!email || !companyId) {
-    return res.status(400).json({ error: 'Email and companyId are required.' });
+  if (!email || !companyId || !password) {
+    return res.status(400).json({ error: 'Email, companyId, and password are required.' });
   }
 
   try {
+    const hashedPassword = await bcrypt.hash(password, 10);
     const conn = await mysql.createConnection(dbConfig);
     await conn.execute(
-      `INSERT INTO users (email, first_name, last_name, phone, role, company_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [email, firstName, lastName, phone, role, companyId]
+      `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone, role, hashedPassword, companyId]
     );
     conn.end();
     res.sendStatus(200);
