@@ -65,7 +65,7 @@ app.get("/user-profile", async (req, res) => {
 
   const conn = await mysql.createConnection(dbConfig);
   const [rows] = await conn.execute(
-    "SELECT email, role, terms, company_id FROM users WHERE email = ?",
+    "SELECT email, role, company_id FROM users WHERE email = ?",
     [user.email]
   );
   conn.end();
@@ -101,13 +101,13 @@ app.post("/edit-company", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const { id, name, address1, address2, city, state, zip, country, terms } = req.body;
+  const { id, name, address1, address2, city, state, zip, country, terms, logo } = req.body;
 
   try {
     const conn = await mysql.createConnection(dbConfig);
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ? WHERE id = ?`,
-      [name, address1, address2, city, state, zip, country, terms, id]
+      `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
+      [name, address1, address2, city, state, zip, country, terms, logo, id]
     );
     conn.end();
     res.json({ message: "Company updated" });
@@ -117,25 +117,26 @@ app.post("/edit-company", async (req, res) => {
 });
 
 // Add New User
-app.post('/add-user', (req, res) => {
-  const { email, firstName, lastName, phone, role, terms, companyId } = req.body;
+app.post('/add-user', async (req, res) => {
+  const { email, firstName, lastName, phone, role, companyId } = req.body;
 
   if (!email || !companyId) {
     return res.status(400).json({ error: 'Email and companyId are required.' });
   }
 
-  const sql = `
-    INSERT INTO users (email, first_name, last_name, phone, role, terms, company_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  db.query(sql, [email, firstName, lastName, phone, role, terms, companyId], (err, result) => {
-    if (err) {
-      console.error('Failed to add user:', err);
-      return res.status(500).json({ error: 'Failed to add user' });
-    }
+  try {
+    const conn = await mysql.createConnection(dbConfig);
+    await conn.execute(
+      `INSERT INTO users (email, first_name, last_name, phone, role, company_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone, role, companyId]
+    );
+    conn.end();
     res.sendStatus(200);
-  });
+  } catch (err) {
+    console.error('Failed to add user:', err);
+    res.status(500).json({ error: 'Failed to add user' });
+  }
 });
 
 // Edit User
@@ -143,19 +144,18 @@ app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const { id, email, firstName, lastName, phone, terms, role } = req.body;
+  const { id, email, firstName, lastName, phone, role } = req.body;
   try {
     const conn = await mysql.createConnection(dbConfig);
     await conn.execute(
-      `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, terms = ?, role = ? WHERE id = ?`,
-      [email, firstName, lastName, phone, terms, role, id]
+      `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
+      [email, firstName, lastName, phone, role, id]
     );
     conn.end();
     res.json({ message: "User updated" });
   } catch (err) {
     res.status(500).json({ error: "Failed to update user" });
   }
-
 });
 
 // Delete User
