@@ -116,17 +116,15 @@ app.post("/edit-company", async (req, res) => {
   }
 });
 
-// Add New User
-app.post('/add-user', async (req, res) => {
+app.post("/add-user", async (req, res) => {
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
-
   if (!email || !companyId || !password) {
-    return res.status(400).json({ error: 'Email, companyId, and password are required.' });
+    return res.status(400).json({ error: "Email, password, and companyId are required." });
   }
 
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
     const conn = await mysql.createConnection(dbConfig);
+    const hashedPassword = await bcrypt.hash(password, 10);
     await conn.execute(
       `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -135,23 +133,29 @@ app.post('/add-user', async (req, res) => {
     conn.end();
     res.sendStatus(200);
   } catch (err) {
-    console.error('Failed to add user:', err);
-    res.status(500).json({ error: 'Failed to add user' });
+    res.status(500).json({ error: "Failed to add user" });
   }
 });
 
-// Edit User
 app.post("/edit-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
-  const { id, email, firstName, lastName, phone, role } = req.body;
+  const { id, email, firstName, lastName, phone, role, password } = req.body;
   try {
     const conn = await mysql.createConnection(dbConfig);
-    await conn.execute(
-      `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
-      [email, firstName, lastName, phone, role, id]
-    );
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, hashedPassword, id]
+      );
+    } else {
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, id]
+      );
+    }
     conn.end();
     res.json({ message: "User updated" });
   } catch (err) {
@@ -159,7 +163,6 @@ app.post("/edit-user", async (req, res) => {
   }
 });
 
-// Delete User
 app.post("/delete-user", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -175,7 +178,6 @@ app.post("/delete-user", async (req, res) => {
   }
 });
 
-// Delete Company
 app.post("/delete-company", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -191,7 +193,6 @@ app.post("/delete-company", async (req, res) => {
   }
 });
 
-// Set Default Ship-To
 app.post("/set-default-shipto", async (req, res) => {
   const { user } = req.session;
   if (!user || user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
@@ -230,4 +231,3 @@ app.get("/", (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
- 
