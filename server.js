@@ -117,6 +117,24 @@ app.post("/edit-company", async (req, res) => {
   }
 });
 
+app.post('/add-company', async (req, res) => {
+  const {
+    name, logo, address1, address2, city, state, zip, country, terms
+  } = req.body;
+
+  try {
+    await db.execute(`
+      INSERT INTO companies (name, logo, address1, address2, city, state, zip, country, terms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, address2, city, state, zip, country, terms]);
+
+    res.status(200).json({ message: "Company created" });
+  } catch (err) {
+    console.error("Failed to create company:", err);
+    res.status(500).json({ error: "Failed to create company" });
+  }
+});
+
 app.post("/add-user", async (req, res) => {
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
   if (!email || !companyId || !password) {
