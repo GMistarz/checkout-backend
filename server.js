@@ -123,10 +123,12 @@ app.post('/add-company', async (req, res) => {
   } = req.body;
 
   try {
-    await db.execute(`
+    const conn = await mysql.createConnection(dbConfig);
+    await conn.execute(`
       INSERT INTO companies (name, logo, address1, address2, city, state, zip, country, terms)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [name, logo, address1, address2, city, state, zip, country, terms]);
+    conn.end();
 
     res.status(200).json({ message: "Company created" });
   } catch (err) {
