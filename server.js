@@ -152,7 +152,7 @@ app.post("/add-user", async (req, res) => {
       [email, firstName, lastName, phone, role, hashedPassword, companyId]
     );
     conn.end();
-    res.sendStatus(200);
+    res.json({ message: "User added" });
   } catch (err) {
     res.status(500).json({ error: "Failed to add user" });
   }
