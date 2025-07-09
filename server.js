@@ -212,7 +212,13 @@ app.post("/delete-company", async (req, res) => {
   const { id } = req.body;
   try {
     const conn = await mysql.createConnection(dbConfig);
+
+    // First delete associated users
+    await conn.execute("DELETE FROM users WHERE company_id = ?", [id]);
+
+    // Then delete the company
     await conn.execute("DELETE FROM companies WHERE id = ?", [id]);
+
     conn.end();
     res.json({ message: "Company deleted" });
   } catch (err) {
