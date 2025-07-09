@@ -191,20 +191,19 @@ app.post("/delete-user", async (req, res) => {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "Missing email" });
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "Missing user ID" });
 
   try {
     const conn = await mysql.createConnection(dbConfig);
-    await conn.execute("DELETE FROM users WHERE email = ?", [email]);
+    await conn.execute("DELETE FROM users WHERE id = ?", [id]);
     conn.end();
     res.json({ message: "User deleted" });
   } catch (err) {
-    console.error(err);
+    console.error("Delete user error:", err);
     res.status(500).json({ error: "Failed to delete user" });
   }
 });
-
 
 app.post("/delete-company", async (req, res) => {
   const { user } = req.session;
