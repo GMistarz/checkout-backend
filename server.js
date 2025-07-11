@@ -159,14 +159,15 @@ app.get("/companies", requireAdmin, async (req, res) => {
   }
 });
 
+// Updated: Removed address2 from edit-company route
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, address2, city, state, zip, country, terms, logo } = req.body;
+  const { id, name, address1, city, state, zip, country, terms, logo } = req.body;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
-      [name, address1, address2, city, state, zip, country, terms, logo, id]
+      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
+      [name, address1, city, state, zip, country, terms, logo, id]
     );
     res.json({ message: "Company updated" });
   } catch (err) {
@@ -177,17 +178,18 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
   }
 });
 
+// Updated: Removed address2 from add-company route
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, address2, city, state, zip, country, terms
+    name, logo, address1, city, state, zip, country, terms
   } = req.body;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(`
-      INSERT INTO companies (name, logo, address1, address2, city, state, zip, country, terms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, logo, address1, address2, city, state, zip, country, terms]);
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms]);
     res.status(200).json({ message: "Company created" });
   } catch (err) {
     console.error("Failed to create company:", err);
@@ -314,11 +316,10 @@ app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
     }
 });
 
-// Add a new ship-to address
+// Updated: Removed address2 from add-shipto route
 app.post("/api/shipto", requireAdmin, async (req, res) => {
-    const { companyId, name, address1, address2, city, state, zip, country, is_default } = req.body;
+    const { companyId, name, address1, city, state, zip, country, is_default } = req.body;
     
-    // Updated validation: removed the requirement for 'country'
     if (!companyId || !address1 || !city || !state || !zip) {
         return res.status(400).json({ error: "Missing required fields." });
     }
@@ -333,9 +334,9 @@ app.post("/api/shipto", requireAdmin, async (req, res) => {
             );
         }
         const [result] = await conn.execute(
-            `INSERT INTO shipto_addresses (company_id, name, address1, address2, city, state, zip, country, is_default) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, name, address1, address2, city, state, zip, country, is_default ? 1 : 0]
+            `INSERT INTO shipto_addresses (company_id, name, address1, city, state, zip, country, is_default) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, name, address1, city, state, zip, country, is_default ? 1 : 0]
         );
         res.status(201).json({ id: result.insertId, message: "Address added successfully" });
     } catch (err) {
@@ -346,16 +347,16 @@ app.post("/api/shipto", requireAdmin, async (req, res) => {
     }
 });
 
-// Update an existing ship-to address (DOES NOT handle is_default yet)
+// Updated: Removed address2 from update-shipto route
 app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    const { name, address1, address2, city, state, zip, country } = req.body; // is_default is not in this body
+    const { name, address1, city, state, zip, country } = req.body; // is_default is not in this body
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
         await conn.execute(
-            `UPDATE shipto_addresses SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
-            [name, address1, address2, city, state, zip, country, addressId]
+            `UPDATE shipto_addresses SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
+            [name, address1, city, state, zip, country, addressId]
         );
         res.json({ message: "Address updated successfully" });
     } catch (err) {
@@ -366,37 +367,39 @@ app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     }
 });
 
-// NEW ENDPOINT: Set a specific address as default
+// Updated: Fix for "Failed to set default address" error for admins.
+// We now retrieve the company_id from the database based on the addressId being updated, 
+// rather than relying solely on the companyId stored in the admin's session.
 app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    // We need the companyId to unset other defaults for the same company
-    const { companyId } = req.session.user; // Assuming companyId is in session for the admin user
-
-    if (!companyId) {
-        return res.status(400).json({ error: "Company ID not found in session." });
-    }
 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        
+        // 1. Determine the companyId associated with the addressId
+        const [addressRows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [addressId]);
+        
+        if (addressRows.length === 0) {
+            return res.status(404).json({ error: "Address not found." });
+        }
+        
+        const targetCompanyId = addressRows[0].company_id;
+
         await conn.beginTransaction(); // Start a transaction
 
-        // 1. Unset the 'is_default' flag for all other addresses of this company
+        // 2. Unset the 'is_default' flag for all other addresses of this target company
         await conn.execute(
             `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ? AND id != ?`,
-            [companyId, addressId]
+            [targetCompanyId, addressId]
         );
 
-        // 2. Set the 'is_default' flag to 1 for the selected address
-        const [result] = await conn.execute(
-            `UPDATE shipto_addresses SET is_default = 1 WHERE id = ? AND company_id = ?`,
-            [addressId, companyId]
+        // 3. Set the 'is_default' flag to 1 for the selected address
+        // We only need to check the addressId here since we verified the companyId in step 2.
+        await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
+            [addressId]
         );
-
-        if (result.affectedRows === 0) {
-            await conn.rollback(); // Rollback if no row was updated (e.g., addressId doesn't exist or doesn't belong to company)
-            return res.status(404).json({ error: "Address not found or does not belong to your company." });
-        }
 
         await conn.commit(); // Commit the transaction if both updates succeed
         res.json({ message: "Default shipping address updated successfully." });
