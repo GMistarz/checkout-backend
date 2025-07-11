@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
-const mysql = require("mysql2/promise");
+const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 
 // NEW: Import the MySQL session store
@@ -11,27 +11,36 @@ const MySQLStore = require('express-mysql-session')(session);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const dbConfig = {
+// Separate database configuration for direct MySQL2 connections
+const dbConnectionConfig = {
   host: "192.254.232.38",
   user: "gmistarz_cse",
   password: "Csec@1280",
   database: "gmistarz_cse",
-  // Recommended settings for the MySQL session store:
-  clearExpired: true,              // Automatically clear expired sessions from the database
-  checkExpirationInterval: 900000, // How frequently (in milliseconds) expired sessions will be cleared (15 minutes)
-  expiration: 86400000,            // The maximum age (in milliseconds) of a session before it expires (24 hours)
-  createDatabaseTable: true,       // Whether or not to create the 'sessions' table if it doesn't exist
-  connectionLimit: 1               // Limit connections from the session store to avoid exhausting pool
+  // No session-specific options here
+  // port: 3306, // Uncomment if your MySQL server is not on the default port
 };
 
-// NEW: Configure the session store options
-const sessionStore = new MySQLStore(dbConfig);
+// Configuration for the express-mysql-session store
+const sessionStoreOptions = {
+  host: dbConnectionConfig.host,
+  user: dbConnectionConfig.user,
+  password: dbConnectionConfig.password,
+  database: dbConnectionConfig.database,
+  clearExpired: true,              // Automatically clear expired sessions
+  checkExpirationInterval: 900000, // 15 minutes
+  expiration: 86400000,            // 24 hours
+  createDatabaseTable: true,       // Whether to create the 'sessions' table
+  connectionLimit: 1               // Limit connections for the session store
+};
+
+// NEW: Configure the session store instance
+const sessionStore = new MySQLStore(sessionStoreOptions);
 
 
 const allowedOrigins = [
   "https://www.chicagostainless.com",
   "https://checkout-backend-jvyx.onrender.com",
-  // Added the frontend origin to allow CORS requests from the Canvas environment
   "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
 ];
 
@@ -78,7 +87,7 @@ app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn; // Declare conn outside try-finally to ensure it's accessible for closing
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
 
     const user = users[0];
@@ -87,10 +96,9 @@ app.post("/login", async (req, res) => {
     }
 
     // Set user data in session
-    // Make sure the role from the database is being correctly assigned
-    req.session.user = { id: user.id, email: user.email, role: user.role, companyId: user.company_id }; // Include ID as well for better logging
+    req.session.user = { id: user.id, email: user.email, role: user.role, companyId: user.company_id };
     
-    // Log for debugging on Render - this is what you saw before
+    // Log for debugging on Render
     console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
     
     res.json({ message: "Login successful", role: user.role });
@@ -109,7 +117,7 @@ app.get("/user-profile", async (req, res) => {
 
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     const [rows] = await conn.execute(
       "SELECT email, role, company_id FROM users WHERE email = ?",
       [user.email]
@@ -140,7 +148,7 @@ app.post("/logout", (req, res) => {
 app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     const [companies] = await conn.execute("SELECT * FROM companies");
     res.json(companies);
   } catch (err) {
@@ -155,7 +163,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
   const { id, name, address1, address2, city, state, zip, country, terms, logo } = req.body;
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(
       `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
       [name, address1, address2, city, state, zip, country, terms, logo, id]
@@ -175,7 +183,7 @@ app.post('/add-company', requireAdmin, async (req, res) => {
   } = req.body;
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(`
       INSERT INTO companies (name, logo, address1, address2, city, state, zip, country, terms)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -193,7 +201,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   const { id } = req.body;
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
     await conn.execute("DELETE FROM companies WHERE id = ?", [id]);
     res.json({ message: "Company deleted" });
@@ -214,7 +222,7 @@ app.post("/add-user", async (req, res) => {
   }
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     const hashedPassword = await bcrypt.hash(password, 10);
     await conn.execute(
       `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
@@ -234,7 +242,7 @@ app.post("/edit-user", requireAdmin, async (req, res) => {
   const { id, email, firstName, lastName, phone, role, password } = req.body;
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
       await conn.execute(
@@ -261,7 +269,7 @@ app.post("/delete-user", requireAdmin, async (req, res) => {
   if (!id) return res.status(400).json({ error: "Missing user ID" });
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute("DELETE FROM users WHERE id = ?", [id]);
     res.json({ message: "User deleted" });
   } catch (err) {
@@ -276,7 +284,7 @@ app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
   const { companyId } = req.params;
   let conn;
   try {
-    conn = await mysql.createConnection(dbConfig);
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     // Select only necessary fields for display
     const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role FROM users WHERE company_id = ?", [companyId]);
     res.json(users);
@@ -295,7 +303,7 @@ app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
     const { companyId } = req.params;
     let conn;
     try {
-        conn = await mysql.createConnection(dbConfig);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
         const [addresses] = await conn.execute("SELECT * FROM shipto_addresses WHERE company_id = ?", [companyId]);
         res.json(addresses);
     } catch (err) {
@@ -308,18 +316,25 @@ app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
 
 // Add a new ship-to address
 app.post("/api/shipto", requireAdmin, async (req, res) => {
-    const { companyId, name, address1, address2, city, state, zip, country } = req.body;
+    const { companyId, name, address1, address2, city, state, zip, country, is_default } = req.body;
     
     if (!companyId || !address1 || !city || !state || !zip || !country) {
         return res.status(400).json({ error: "Missing required fields." });
     }
     let conn;
     try {
-        conn = await mysql.createConnection(dbConfig);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // If the new address is set as default, first unset all others for this company
+        if (is_default) {
+             await conn.execute(
+                `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?`,
+                [companyId]
+            );
+        }
         const [result] = await conn.execute(
-            `INSERT INTO shipto_addresses (company_id, name, address1, address2, city, state, zip, country) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, name, address1, address2, city, state, zip, country]
+            `INSERT INTO shipto_addresses (company_id, name, address1, address2, city, state, zip, country, is_default) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, name, address1, address2, city, state, zip, country, is_default ? 1 : 0]
         );
         res.status(201).json({ id: result.insertId, message: "Address added successfully" });
     } catch (err) {
@@ -330,13 +345,13 @@ app.post("/api/shipto", requireAdmin, async (req, res) => {
     }
 });
 
-// Update an existing ship-to address
+// Update an existing ship-to address (DOES NOT handle is_default yet)
 app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    const { name, address1, address2, city, state, zip, country } = req.body;
+    const { name, address1, address2, city, state, zip, country } = req.body; // is_default is not in this body
     let conn;
     try {
-        conn = await mysql.createConnection(dbConfig);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
         await conn.execute(
             `UPDATE shipto_addresses SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
             [name, address1, address2, city, state, zip, country, addressId]
@@ -350,12 +365,58 @@ app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     }
 });
 
+// NEW ENDPOINT: Set a specific address as default
+app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
+    const { addressId } = req.params;
+    // We need the companyId to unset other defaults for the same company
+    const { companyId } = req.session.user; // Assuming companyId is in session for the admin user
+
+    if (!companyId) {
+        return res.status(400).json({ error: "Company ID not found in session." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        await conn.beginTransaction(); // Start a transaction
+
+        // 1. Unset the 'is_default' flag for all other addresses of this company
+        await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ? AND id != ?`,
+            [companyId, addressId]
+        );
+
+        // 2. Set the 'is_default' flag to 1 for the selected address
+        const [result] = await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 1 WHERE id = ? AND company_id = ?`,
+            [addressId, companyId]
+        );
+
+        if (result.affectedRows === 0) {
+            await conn.rollback(); // Rollback if no row was updated (e.g., addressId doesn't exist or doesn't belong to company)
+            return res.status(404).json({ error: "Address not found or does not belong to your company." });
+        }
+
+        await conn.commit(); // Commit the transaction if both updates succeed
+        res.json({ message: "Default shipping address updated successfully." });
+
+    } catch (err) {
+        if (conn) {
+            await conn.rollback(); // Rollback on error
+        }
+        console.error("Error setting default shipping address:", err);
+        res.status(500).json({ error: "Failed to set default shipping address." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 // Delete a ship-to address
 app.delete("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
     let conn;
     try {
-        conn = await mysql.createConnection(dbConfig);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
         await conn.execute("DELETE FROM shipto_addresses WHERE id = ?", [addressId]);
         res.json({ message: "Address deleted successfully" });
     } catch (err) {
@@ -368,14 +429,7 @@ app.delete("/api/shipto/:addressId", requireAdmin, async (req, res) => {
 
 // --- General Routes and Server Start ---
 
-// Serve static files from a 'public' directory if you have one, or redirect as per your original code
-// Assuming you might serve HTML files from a 'public' folder
-// app.use(express.static(path.join(__dirname, 'public'))); 
-
 app.get("/", (req, res) => {
-  // If you have an admin-dashboard.html, ensure it's in a publicly accessible folder
-  // like 'public', and serve it using express.static or sendFile
-  // For now, keeping your original redirect
   res.redirect("/admin-dashboard.html"); 
 });
 
