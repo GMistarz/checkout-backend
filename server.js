@@ -50,6 +50,15 @@ app.use(session({
 
 // Middleware to check if the user is authenticated and is an admin
 const requireAdmin = (req, res, next) => {
+  console.log("[requireAdmin] Middleware triggered.");
+  console.log("[requireAdmin] req.session:", req.session);
+  if (req.session && req.session.user) {
+    console.log("[requireAdmin] req.session.user:", req.session.user);
+    console.log("[requireAdmin] req.session.user.role:", req.session.user.role);
+  } else {
+    console.log("[requireAdmin] req.session or req.session.user is not set.");
+  }
+
   if (req.session && req.session.user && req.session.user.role === "admin") {
     next();
   } else {
