@@ -34,7 +34,8 @@ app.use(cors({
 
 // --- Session & Body Parsing ---
 app.use(express.json());
-app.set("trust proxy", 1);
+// MODIFIED: Changed trust proxy to 'true' for potentially better proxy handling
+app.set("trust proxy", true); 
 app.use(session({
   secret: "secret-key",
   resave: false,
@@ -42,7 +43,6 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === "production", // Use secure cookies in production
     httpOnly: true,
-    // MODIFIED: Changed sameSite to 'none' for better cross-origin session persistence
     sameSite: "none", 
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
@@ -82,6 +82,8 @@ app.post("/login", async (req, res) => {
 
       if (passwordMatch) {
         req.session.user = { id: user.id, email: user.email, role: user.role };
+        // ADDED: Log to confirm session user is set after successful login
+        console.log("[Login Success] req.session.user set to:", req.session.user); 
         res.json({ message: "Login successful", user: { id: user.id, email: user.email, role: user.role } });
       } else {
         res.status(401).json({ error: "Invalid credentials" });
@@ -339,4 +341,4 @@ Database Schema Notes:
 You will need an 'is_default' column in your 'shipto_addresses' table.
 If you don't have it, you can add it with a SQL command like:
 ALTER TABLE shipto_addresses ADD COLUMN is_default BOOLEAN DEFAULT FALSE;
-*/ 
+*/
