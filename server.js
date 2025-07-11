@@ -31,7 +31,7 @@ const sessionStoreOptions = {
   checkExpirationInterval: 900000, // 15 minutes
   expiration: 86400000,            // 24 hours
   createDatabaseTable: true,       // Whether to create the 'sessions' table
-  connectionLimit: 10              // INCREASED: from 1 to 10 for better concurrency
+  connectionLimit: 1               // Limit connections for the session store
 };
 
 // NEW: Configure the session store instance
@@ -368,11 +368,18 @@ app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
 // NEW ENDPOINT: Set a specific address as default
 app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    // We need the companyId to unset other defaults for the same company
-    const { companyId } = req.session.user; // Assuming companyId is in session for the admin user
+    // We now retrieve companyId from the request body, allowing admins to modify any company.
+    const { companyId } = req.body; 
 
     if (!companyId) {
-        return res.status(400).json({ error: "Company ID not found in session." });
+        // If companyId is missing from the body, fall back to session user's companyId for existing behavior
+        // Or handle as an error if the frontend must provide it.
+        // Since admin-dashboard.html provides the companyId, we rely on it here.
+        if (req.session.user && req.session.user.companyId) {
+            companyId = req.session.user.companyId;
+        } else {
+            return res.status(400).json({ error: "Company ID missing in request body and session." });
+        }
     }
 
     let conn;
@@ -394,7 +401,7 @@ app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => 
 
         if (result.affectedRows === 0) {
             await conn.rollback(); // Rollback if no row was updated (e.g., addressId doesn't exist or doesn't belong to company)
-            return res.status(404).json({ error: "Address not found or does not belong to your company." });
+            return res.status(404).json({ error: "Address not found or does not belong to the specified company." });
         }
 
         await conn.commit(); // Commit the transaction if both updates succeed
