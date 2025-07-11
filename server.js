@@ -38,7 +38,8 @@ const sessionStore = new MySQLStore(sessionStoreOptions);
 
 // Middleware
 app.use(cors({
-    origin: "http://192.254.232.38", // Ensure this matches your frontend URL
+    // CORRECTED: Set the origin to the live frontend URL
+    origin: "https://www.chicagostainless.com", 
     credentials: true,
 }));
 app.use(express.json()); // Body parser for JSON
@@ -124,6 +125,7 @@ app.get("/api/check-auth", (req, res) => {
 
 // Get all companies (Admin only)
 app.get("/api/companies", requireAdmin, async (req, res) => {
+
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
