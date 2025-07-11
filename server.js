@@ -339,4 +339,4 @@ Database Schema Notes:
 You will need an 'is_default' column in your 'shipto_addresses' table.
 If you don't have it, you can add it with a SQL command like:
 ALTER TABLE shipto_addresses ADD COLUMN is_default BOOLEAN DEFAULT FALSE;
-*/
+*/ 
