@@ -2,7 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
-const mysql = require("mysql2/promise");
+const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 
 // NEW: Import the MySQL session store
@@ -31,213 +31,284 @@ const sessionStoreOptions = {
   checkExpirationInterval: 900000, // 15 minutes
   expiration: 86400000,            // 24 hours
   createDatabaseTable: true,       // Whether to create the 'sessions' table
-  connectionLimit: 10,
+  connectionLimit: 10              // INCREASED: from 1 to 10 for better concurrency
 };
 
+// NEW: Configure the session store instance
 const sessionStore = new MySQLStore(sessionStoreOptions);
 
-// Middleware
+
+const allowedOrigins = [
+  "https://www.chicagostainless.com",
+  "https://checkout-backend-jvyx.onrender.com",
+  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
+];
+
+// --- CORS Configuration ---
 app.use(cors({
-    // CORRECTED: Set the origin to the live frontend URL
-    origin: "https://www.chicagostainless.com", 
-    credentials: true,
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
 }));
-app.use(express.json()); // Body parser for JSON
-app.use(express.static(path.join(__dirname, 'public')));
 
-// Session Middleware
+// --- Session & Body Parsing ---
+app.use(express.json());
+app.set("trust proxy", 1); // Essential for 'secure: true' cookies when behind a proxy/load balancer like Render
+
 app.use(session({
-    secret: 'SuperSecretKey_For_Session_Security',
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: false, // Set to true if using HTTPS (for production)
-        httpOnly: true,
-        maxAge: 86400000, // 24 hours
-    }
+  secret: "secret-key", // Replace with a strong, unique secret key in production
+  resave: false,
+  saveUninitialized: false,
+  store: sessionStore, // <-- THIS IS THE CRUCIAL CHANGE for persistent sessions
+  cookie: {
+    sameSite: "none",  // Required for cross-site cookies
+    secure: true,      // Required for sameSite: "none" and highly recommended for production (Render provides HTTPS)
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
 
-// Authorization Middleware
-const requireAuth = (req, res, next) => {
-    if (req.session.user) {
-        next();
-    } else {
-        res.status(401).json({ error: "Unauthorized" });
-    }
-};
-
+// --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
-    if (req.session.user && req.session.user.role === 'admin') {
-        next();
-    } else {
-        res.status(403).json({ error: "Forbidden" });
+    // console.log("Checking session for admin role:", req.session.user); // Optional: for more debugging
+    if (!req.session.user || req.session.user.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden: Admin access required" }); // More specific message
     }
+    next();
 };
 
 // --- Authentication Routes ---
-app.post("/api/login", async (req, res) => {
-    const { username, password } = req.body;
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute("SELECT id, username, password_hash, role FROM users WHERE username = ?", [username]);
 
-        if (rows.length > 0) {
-            const user = rows[0];
-            const passwordMatch = await bcrypt.compare(password, user.password_hash);
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  let conn; // Declare conn outside try-finally to ensure it's accessible for closing
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
 
-            if (passwordMatch) {
-                req.session.user = { id: user.id, username: user.username, role: user.role };
-                res.json({ message: "Login successful", user: { username: user.username, role: user.role } });
-            } else {
-                res.status(401).json({ error: "Invalid credentials" });
-            }
-        } else {
-            res.status(401).json({ error: "Invalid credentials" });
-        }
-    } catch (err) {
-        console.error("Error during login:", err);
-        res.status(500).json({ error: "Internal server error" });
-    } finally {
-        if (conn) conn.end();
+    const user = users[0];
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // Set user data in session
+    req.session.user = { id: user.id, email: user.email, role: user.role, companyId: user.company_id };
+    
+    // Log for debugging on Render
+    console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
+    
+    res.json({ message: "Login successful", role: user.role });
+
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed due to server error" });
+  } finally {
+    if (conn) conn.end(); // Ensure connection is closed
+  }
 });
 
-app.get("/api/logout", (req, res) => {
-    req.session.destroy(err => {
-        if (err) {
-            return res.status(500).json({ error: "Failed to log out" });
-        }
-        res.status(200).json({ message: "Logged out successfully" });
-    });
+app.get("/user-profile", async (req, res) => {
+  const { user } = req.session;
+  if (!user) return res.status(401).json({ error: "Not logged in" });
+
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const [rows] = await conn.execute(
+      "SELECT email, role, company_id FROM users WHERE email = ?",
+      [user.email]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("User profile error:", err);
+    res.status(500).json({ error: "Failed to retrieve user profile" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-app.get("/api/check-auth", (req, res) => {
-    if (req.session.user) {
-        res.json({ isAuthenticated: true, user: req.session.user });
-    } else {
-        res.json({ isAuthenticated: false });
+app.post("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Logout failed:", err);
+      return res.status(500).json({ error: "Logout failed" });
     }
+    // Clear the session cookie from the client
+    res.clearCookie("connect.sid", { path: "/", sameSite: "none", secure: true }); // Ensure cookie options match the session setup
+    res.json({ message: "Logged out" });
+  });
 });
 
 // --- Company Routes ---
 
-// Get all companies (Admin only)
-app.get("/api/companies", requireAdmin, async (req, res) => {
-
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute("SELECT id, name, description, logo, billing_address, phone, fax, email, website FROM companies");
-        res.json(rows);
-    } catch (err) {
-        console.error("Error fetching companies:", err);
-        res.status(500).json({ error: "Failed to fetch companies" });
-    } finally {
-        if (conn) conn.end();
-    }
+app.get("/companies", requireAdmin, async (req, res) => {
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const [companies] = await conn.execute("SELECT * FROM companies");
+    res.json(companies);
+  } catch (err) {
+    console.error("Failed to retrieve companies:", err);
+    res.status(500).json({ error: "Failed to retrieve companies" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-// Get a single company by ID
-app.get("/api/companies/:id", requireAdmin, async (req, res) => {
-    const { id } = req.params;
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute("SELECT id, name, description, logo, billing_address, phone, fax, email, website FROM companies WHERE id = ?", [id]);
-        if (rows.length > 0) {
-            res.json(rows[0]);
-        } else {
-            res.status(404).json({ error: "Company not found" });
-        }
-    } catch (err) {
-        console.error("Error fetching company:", err);
-        res.status(500).json({ error: "Failed to fetch company" });
-    } finally {
-        if (conn) conn.end();
-    }
+app.post("/edit-company", requireAdmin, async (req, res) => {
+  const { id, name, address1, address2, city, state, zip, country, terms, logo } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute(
+      `UPDATE companies SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
+      [name, address1, address2, city, state, zip, country, terms, logo, id]
+    );
+    res.json({ message: "Company updated" });
+  } catch (err) {
+    console.error("Failed to update company:", err);
+    res.status(500).json({ error: "Failed to update company" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-// Create a new company
-app.post("/api/companies", requireAdmin, async (req, res) => {
-    const { name, description, logo, billing_address, phone, fax, email, website } = req.body;
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [result] = await conn.execute(
-            "INSERT INTO companies (name, description, logo, billing_address, phone, fax, email, website) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            [name, description, logo, billing_address, phone, fax, email, website]
-        );
-        res.status(201).json({ id: result.insertId, message: "Company created successfully" });
-    } catch (err) {
-        console.error("Error creating company:", err);
-        res.status(500).json({ error: "Failed to create company" });
-    } finally {
-        if (conn) conn.end();
-    }
+app.post('/add-company', requireAdmin, async (req, res) => {
+  const {
+    name, logo, address1, address2, city, state, zip, country, terms
+  } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute(`
+      INSERT INTO companies (name, logo, address1, address2, city, state, zip, country, terms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, address2, city, state, zip, country, terms]);
+    res.status(200).json({ message: "Company created" });
+  } catch (err) {
+    console.error("Failed to create company:", err);
+    res.status(500).json({ error: "Failed to create company" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-// Update an existing company
-app.put("/api/companies/:id", requireAdmin, async (req, res) => {
-    const { id } = req.params;
-    const { name, description, logo, billing_address, phone, fax, email, website } = req.body;
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [result] = await conn.execute(
-            "UPDATE companies SET name = ?, description = ?, logo = ?, billing_address = ?, phone = ?, fax = ?, email = ?, website = ? WHERE id = ?",
-            [name, description, logo, billing_address, phone, fax, email, website, id]
-        );
-        if (result.affectedRows > 0) {
-            res.json({ message: "Company updated successfully" });
-        } else {
-            res.status(404).json({ error: "Company not found" });
-        }
-    } catch (err) {
-        console.error("Error updating company:", err);
-        res.status(500).json({ error: "Failed to update company" });
-    } finally {
-        if (conn) conn.end();
-    }
+app.post("/delete-company", requireAdmin, async (req, res) => {
+  const { id } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
+    await conn.execute("DELETE FROM companies WHERE id = ?", [id]);
+    res.json({ message: "Company deleted" });
+  } catch (err) {
+    console.error("Failed to delete company:", err);
+    res.status(500).json({ error: "Failed to delete company" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-// Delete a company
-app.delete("/api/companies/:id", requireAdmin, async (req, res) => {
-    const { id } = req.params;
-    let conn;
-    try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [result] = await conn.execute("DELETE FROM companies WHERE id = ?", [id]);
-        if (result.affectedRows > 0) {
-            res.json({ message: "Company deleted successfully" });
-        } else {
-            res.status(404).json({ error: "Company not found" });
-        }
-    } catch (err) {
-        console.error("Error deleting company:", err);
-        res.status(500).json({ error: "Failed to delete company" });
-    } finally {
-        if (conn) conn.end();
-    }
+// --- User Routes ---
+
+app.post("/add-user", async (req, res) => {
+  const { email, firstName, lastName, phone, role, password, companyId } = req.body;
+  if (!email || !companyId || !password) {
+    return res.status(400).json({ error: "Email, password, and companyId are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await conn.execute(
+      `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone, role, hashedPassword, companyId]
+    );
+    res.json({ message: "User added" });
+  } catch (err) {
+    console.error("Failed to add user:", err);
+    res.status(500).json({ error: "Failed to add user" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-// --- Ship-to Address Routes ---
+app.post("/edit-user", requireAdmin, async (req, res) => {
+  const { id, email, firstName, lastName, phone, role, password } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, hashedPassword, id]
+      );
+    } else {
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, id]
+      );
+    }
+    res.json({ message: "User updated" });
+  } catch (err) {
+    console.error("Failed to update user:", err);
+    res.status(500).json({ error: "Failed to update user" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
 
-// Get all ship-to addresses for a specific company
-app.get("/api/companies/:companyId/shipto", requireAdmin, async (req, res) => {
+app.post("/delete-user", requireAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "Missing user ID" });
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute("DELETE FROM users WHERE id = ?", [id]);
+    res.json({ message: "User deleted" });
+  } catch (err) {
+    console.error("Delete user error:", err);
+    res.status(500).json({ error: "Failed to delete user" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
+  const { companyId } = req.params;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    // Select only necessary fields for display
+    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role FROM users WHERE company_id = ?", [companyId]);
+    res.json(users);
+  } catch (err) {
+    console.error("Failed to retrieve users:", err);
+    res.status(500).json({ error: "Failed to retrieve users" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+// --- Ship To Addresses Routes ---
+
+// Get all ship-to addresses for a company
+app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
     const { companyId } = req.params;
     let conn;
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute(
-            "SELECT id, company_id, name, address1, address2, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ? ORDER BY is_default DESC, name",
-            [companyId]
-        );
-        res.json(rows);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        const [addresses] = await conn.execute("SELECT * FROM shipto_addresses WHERE company_id = ?", [companyId]);
+        res.json(addresses);
     } catch (err) {
         console.error("Error fetching ship-to addresses:", err);
-        res.status(500).json({ error: "Failed to fetch ship-to addresses" });
+        res.status(500).json({ error: "Failed to retrieve ship-to addresses" });
     } finally {
         if (conn) conn.end();
     }
@@ -246,29 +317,27 @@ app.get("/api/companies/:companyId/shipto", requireAdmin, async (req, res) => {
 // Add a new ship-to address
 app.post("/api/shipto", requireAdmin, async (req, res) => {
     const { companyId, name, address1, address2, city, state, zip, country, is_default } = req.body;
+    
+    if (!companyId || !address1 || !city || !state || !zip || !country) {
+        return res.status(400).json({ error: "Missing required fields." });
+    }
     let conn;
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        await conn.beginTransaction();
-
-        // If the new address is marked as default, unset previous defaults
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // If the new address is set as default, first unset all others for this company
         if (is_default) {
-            await conn.execute("UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?", [companyId]);
+             await conn.execute(
+                `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?`,
+                [companyId]
+            );
         }
-
-        // Insert the new address
         const [result] = await conn.execute(
-            `INSERT INTO shipto_addresses (company_id, name, address1, address2, city, state, zip, country, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO shipto_addresses (company_id, name, address1, address2, city, state, zip, country, is_default) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [companyId, name, address1, address2, city, state, zip, country, is_default ? 1 : 0]
         );
-
-        await conn.commit();
         res.status(201).json({ id: result.insertId, message: "Address added successfully" });
-
     } catch (err) {
-        if (conn) {
-            await conn.rollback();
-        }
         console.error("Error adding ship-to address:", err);
         res.status(500).json({ error: "Failed to add ship-to address" });
     } finally {
@@ -276,42 +345,19 @@ app.post("/api/shipto", requireAdmin, async (req, res) => {
     }
 });
 
-// Update an existing ship-to address (Now handles is_default)
+// Update an existing ship-to address (DOES NOT handle is_default yet)
 app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    // Ensure all fields, including isDefault, are extracted from the request body
-    const { companyId, name, address1, address2, city, state, zip, country, isDefault } = req.body;
+    const { name, address1, address2, city, state, zip, country } = req.body; // is_default is not in this body
     let conn;
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        await conn.beginTransaction(); // Start a transaction for consistency
-
-        // 1. If isDefault is true, unset all other defaults for this company
-        if (isDefault) {
-             await conn.execute(
-                `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ? AND id != ?`,
-                [companyId, addressId]
-            );
-        }
-
-        // 2. Update the selected address, including the is_default status
-        const [result] = await conn.execute(
-            `UPDATE shipto_addresses SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ?, is_default = ? WHERE id = ?`,
-            [name, address1, address2, city, state, zip, country, isDefault ? 1 : 0, addressId]
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        await conn.execute(
+            `UPDATE shipto_addresses SET name = ?, address1 = ?, address2 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
+            [name, address1, address2, city, state, zip, country, addressId]
         );
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Address not found or update failed." });
-        }
-
-        await conn.commit(); // Commit the transaction
         res.json({ message: "Address updated successfully" });
-
     } catch (err) {
-        if (conn) {
-            await conn.rollback(); // Rollback on error
-        }
         console.error("Error updating ship-to address:", err);
         res.status(500).json({ error: "Failed to update ship-to address" });
     } finally {
@@ -319,31 +365,35 @@ app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
     }
 });
 
-
-// Dedicated endpoint to set a default address
+// NEW ENDPOINT: Set a specific address as default
 app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
-    const { companyId } = req.body; // Expecting companyId in the request body
+    // We need the companyId to unset other defaults for the same company
+    const { companyId } = req.session.user; // Assuming companyId is in session for the admin user
+
+    if (!companyId) {
+        return res.status(400).json({ error: "Company ID not found in session." });
+    }
+
     let conn;
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        await conn.beginTransaction(); // Start transaction
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        await conn.beginTransaction(); // Start a transaction
 
-        // 1. Unset the default for all other addresses of the company
-        const [unsetResult] = await conn.execute(
-            "UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?",
-            [companyId]
+        // 1. Unset the 'is_default' flag for all other addresses of this company
+        await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ? AND id != ?`,
+            [companyId, addressId]
         );
 
-        // 2. Set the requested address as the default (is_default = 1)
-        const [setResult] = await conn.execute(
-            "UPDATE shipto_addresses SET is_default = 1 WHERE id = ? AND company_id = ?",
+        // 2. Set the 'is_default' flag to 1 for the selected address
+        const [result] = await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 1 WHERE id = ? AND company_id = ?`,
             [addressId, companyId]
         );
 
-        if (setResult.affectedRows === 0) {
-            await conn.rollback();
-            // Handle case where addressId might not belong to the company (or doesn't exist)
+        if (result.affectedRows === 0) {
+            await conn.rollback(); // Rollback if no row was updated (e.g., addressId doesn't exist or doesn't belong to company)
             return res.status(404).json({ error: "Address not found or does not belong to your company." });
         }
 
@@ -378,20 +428,11 @@ app.delete("/api/shipto/:addressId", requireAdmin, async (req, res) => {
 });
 
 // --- General Routes and Server Start ---
+
 app.get("/", (req, res) => {
-    res.send("API Server is running.");
-});
-
-// Serve the admin-dashboard.html file
-app.get("/admin-dashboard", (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
-});
-
-// Serve the login.html file
-app.get("/login", (req, res) => {
-    res.sendFile(path.join(__dirname, 'login.html'));
+  res.redirect("/admin-dashboard.html"); 
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });
