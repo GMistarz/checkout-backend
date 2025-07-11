@@ -42,7 +42,8 @@ app.use(session({
   cookie: {
     secure: process.env.NODE_ENV === "production", // Use secure cookies in production
     httpOnly: true,
-    sameSite: "lax", // Adjust as needed, 'none' for cross-site with secure:true
+    // MODIFIED: Changed sameSite to 'none' for better cross-origin session persistence
+    sameSite: "none", 
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
@@ -323,3 +324,10 @@ app.delete("/api/shipto/:addressId", requireAdmin, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+/*
+Database Schema Notes:
+You will need an 'is_default' column in your 'shipto_addresses' table.
+If you don't have it, you can add it with a SQL command like:
+ALTER TABLE shipto_addresses ADD COLUMN is_default BOOLEAN DEFAULT FALSE;
+*/
