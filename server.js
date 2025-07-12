@@ -81,6 +81,54 @@ const requireAdmin = (req, res, next) => {
     next();
 };
 
+// --- NEW: Helper Middleware for Authenticated User Check ---
+const requireAuth = (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+    next();
+};
+
+// --- NEW: Helper Middleware for Company Access Authorization ---
+// This middleware checks if the user is authenticated and if their company_id
+// matches the company_id being accessed in the request.
+const authorizeCompanyAccess = async (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+
+    const userCompanyId = req.session.user.companyId;
+
+    // Determine the companyId from the request based on route
+    let requestedCompanyId = null;
+    if (req.params.companyId) { // For routes like /api/shipto/:companyId
+        requestedCompanyId = parseInt(req.params.companyId, 10);
+    } else if (req.body.companyId) { // For POST routes like /api/shipto (add new)
+        requestedCompanyId = parseInt(req.body.companyId, 10);
+    } else if (req.params.addressId) { // For PUT/DELETE/SET_DEFAULT on /api/shipto/:addressId
+        let conn;
+        try {
+            conn = await mysql.createConnection(dbConnectionConfig);
+            const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
+            if (rows.length > 0) {
+                requestedCompanyId = rows[0].company_id;
+            }
+        } catch (err) {
+            console.error("Error fetching company_id for address:", err);
+            return res.status(500).json({ error: "Server error while authorizing company access" });
+        } finally {
+            if (conn) conn.end();
+        }
+    }
+
+    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
+        return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+    }
+
+    next();
+};
+
+
 // --- Authentication Routes ---
 
 app.post("/login", async (req, res) => {
@@ -96,7 +144,14 @@ app.post("/login", async (req, res) => {
     }
 
     // Set user data in session
-    req.session.user = { id: user.id, email: user.email, role: user.role, companyId: user.company_id };
+    req.session.user = { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role, 
+        companyId: user.company_id,
+        firstName: user.first_name, // Include first name
+        lastName: user.last_name     // Include last name
+    };
     
     // Log for debugging on Render
     console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
@@ -111,23 +166,22 @@ app.post("/login", async (req, res) => {
   }
 });
 
-app.get("/user-profile", async (req, res) => {
+app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
   const { user } = req.session;
-  if (!user) return res.status(401).json({ error: "Not logged in" });
-
-  let conn;
-  try {
-    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [rows] = await conn.execute(
-      "SELECT email, role, company_id FROM users WHERE email = ?",
-      [user.email]
-    );
-    res.json(rows[0]);
-  } catch (err) {
-    console.error("User profile error:", err);
-    res.status(500).json({ error: "Failed to retrieve user profile" });
-  } finally {
-    if (conn) conn.end();
+  // The session 'user' object already contains most of the profile data needed.
+  // We can directly send it, or fetch from DB if more fields are needed.
+  // For simplicity, sending directly from session, ensuring it includes first_name and last_name.
+  if (user) {
+      res.json({
+          email: user.email,
+          role: user.role,
+          company_id: user.companyId,
+          first_name: user.firstName,
+          last_name: user.lastName
+      });
+  } else {
+      // This case should ideally be caught by requireAuth, but as a fallback:
+      res.status(401).json({ error: "Not logged in" });
   }
 });
 
@@ -143,8 +197,8 @@ app.post("/logout", (req, res) => {
   });
 });
 
-// --- Company Routes ---
-
+// --- Company Routes (Admin Only) ---
+// These remain requireAdmin as they are for overall company management
 app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
@@ -214,6 +268,34 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
     if (conn) conn.end();
   }
 });
+
+// --- NEW: User-specific Company Details Route ---
+app.get("/user/company-details", requireAuth, async (req, res) => {
+  const userCompanyId = req.session.user.companyId;
+  if (!userCompanyId) {
+    return res.status(404).json({ error: "No company associated with this user." });
+  }
+
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    const [companies] = await conn.execute(
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      [userCompanyId]
+    );
+
+    if (companies.length === 0) {
+      return res.status(404).json({ error: "Company not found for this user." });
+    }
+    res.json(companies[0]);
+  } catch (err) {
+    console.error("Error fetching user's company details:", err);
+    res.status(500).json({ error: "Failed to retrieve user's company details." });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
 
 // --- User Routes ---
 
@@ -301,7 +383,7 @@ app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
 // --- Ship To Addresses Routes ---
 
 // Get all ship-to addresses for a company
-app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
+app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { companyId } = req.params;
     let conn;
     try {
@@ -317,7 +399,7 @@ app.get("/api/shipto/:companyId", requireAdmin, async (req, res) => {
 });
 
 // Updated: Removed address2 from add-shipto route
-app.post("/api/shipto", requireAdmin, async (req, res) => {
+app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { companyId, name, address1, city, state, zip, country, is_default } = req.body;
     
     if (!companyId || !address1 || !city || !state || !zip) {
@@ -348,7 +430,7 @@ app.post("/api/shipto", requireAdmin, async (req, res) => {
 });
 
 // Updated: Removed address2 from update-shipto route
-app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
+app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
     const { name, address1, city, state, zip, country } = req.body; // is_default is not in this body
     let conn;
@@ -370,7 +452,7 @@ app.put("/api/shipto/:addressId", requireAdmin, async (req, res) => {
 // Updated: Fix for "Failed to set default address" error for admins.
 // We now retrieve the company_id from the database based on the addressId being updated, 
 // rather than relying solely on the companyId stored in the admin's session.
-app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
+app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
 
     let conn;
@@ -385,6 +467,11 @@ app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => 
         }
         
         const targetCompanyId = addressRows[0].company_id;
+
+        // Ensure the logged-in user's company matches the target company
+        if (req.session.user.companyId !== targetCompanyId) {
+            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
+        }
 
         await conn.beginTransaction(); // Start a transaction
 
@@ -416,7 +503,7 @@ app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => 
 });
 
 // Delete a ship-to address
-app.delete("/api/shipto/:addressId", requireAdmin, async (req, res) => {
+app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
     let conn;
     try {
