@@ -121,8 +121,22 @@ const authorizeCompanyAccess = async (req, res, next) => {
         }
     }
 
+    // For the submit-order route, we assume the user's companyId is implicitly linked to the order.
+    // We don't need a requestedCompanyId from params/body for this specific route's authorization,
+    // but we ensure the user is authenticated and has a companyId.
+    if (req.path === '/submit-order' && !userCompanyId) {
+        return res.status(403).json({ error: "Forbidden: User not associated with a company." });
+    }
+
+
     if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
-        return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+        // Only apply this check if a specific companyId was requested in the URL/body
+        // and it doesn't match the user's companyId, or if no companyId was found
+        // but the route requires it (e.g., shipto management).
+        // For /submit-order, this block will be skipped unless a companyId param was explicitly passed.
+        if (req.path.startsWith('/api/shipto/') || req.path === '/api/shipto') {
+            return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+        }
     }
 
     next();
@@ -517,6 +531,56 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
         if (conn) conn.end();
     }
 });
+
+// --- NEW: Submit Order Route ---
+app.post("/submit-order", requireAuth, async (req, res) => {
+    const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
+    const userId = req.session.user.id;
+    const companyId = req.session.user.companyId;
+
+    if (!userId || !companyId) {
+        return res.status(400).json({ error: "User or company ID missing from session." });
+    }
+    if (!poNumber || !orderedBy || !billingAddress || !shippingAddress || !shippingAddressId || !shippingMethod || !items || items.length === 0) {
+        return res.status(400).json({ error: "Missing required order fields or empty cart." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.beginTransaction(); // Start a transaction
+
+        // Insert into orders table
+        const [orderResult] = await conn.execute(
+            `INSERT INTO orders (user_id, company_id, po_number, ordered_by, billing_address, shipping_address, shipping_address_id, attn, tag, shipping_method, carrier_account, order_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [userId, companyId, poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount]
+        );
+        const orderId = orderResult.insertId;
+
+        // Insert into order_items table
+        for (const item of items) {
+            await conn.execute(
+                `INSERT INTO order_items (order_id, part_number, unit_price, quantity, note)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [orderId, item.partNo, item.price, item.quantity, item.note || null]
+            );
+        }
+
+        await conn.commit(); // Commit the transaction
+        res.status(200).json({ message: "Order submitted successfully!", orderId: orderId });
+
+    } catch (err) {
+        if (conn) {
+            await conn.rollback(); // Rollback on error
+        }
+        console.error("Error submitting order:", err);
+        res.status(500).json({ error: "Failed to submit order due to server error." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 
 // --- General Routes and Server Start ---
 
