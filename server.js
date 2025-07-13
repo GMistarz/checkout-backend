@@ -526,15 +526,13 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
+    const userEmail = req.session.user.email; // Get user's email from session
 
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
 
-    if (!userId || !companyId) {
-        console.error("Validation Error: User or company ID missing from session.");
-        return res.status(400).json({ error: "User or company ID missing from session." });
-    }
-    if (!poNumber || !orderedBy || !billingAddress || !shippingAddress || !shippingAddressId || !shippingMethod || !items || items.length === 0) {
-        console.error("Validation Error: Missing required order fields or empty cart.", { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, shippingMethod, items });
+    // Validate required fields based on the *actual* columns in the 'orders' table schema provided
+    if (!userEmail || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
+        console.error("Validation Error: Missing required order fields or empty cart.", { userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, items });
         return res.status(400).json({ error: "Missing required order fields or empty cart." });
     }
 
@@ -543,15 +541,16 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction(); // Start a transaction
 
-        // Insert into orders table (removed user_id and company_id as they are not in the table schema based on errors)
+        // Insert into orders table, matching the provided schema exactly
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (po_number, ordered_by, billing_address, shipping_address, shipping_address_id, attn, tag, shipping_method, carrier_account, order_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount]
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
-        // Insert into order_items table
+        // Assuming 'order_items' table structure is correct and has these columns:
+        // order_id, part_number, unit_price, quantity, note
         for (const item of items) {
             await conn.execute(
                 `INSERT INTO order_items (order_id, part_number, unit_price, quantity, note)
