@@ -549,15 +549,8 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         );
         const orderId = orderResult.insertId;
 
-        // Assuming 'order_items' table structure is correct and has these columns:
-        // order_id, part_number, unit_price, quantity, note
-        for (const item of items) {
-            await conn.execute(
-                `INSERT INTO order_items (order_id, part_number, unit_price, quantity, note)
-                 VALUES (?, ?, ?, ?, ?)`,
-                [orderId, item.partNo, item.price, item.quantity, item.note || null]
-            );
-        }
+        // Removed the INSERT into order_items table as per the provided 'orders' table schema
+        // which includes an 'items' JSON column.
 
         await conn.commit(); // Commit the transaction
         res.status(200).json({ message: "Order submitted successfully!", orderId: orderId });
