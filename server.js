@@ -246,7 +246,6 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
   }
 });
 
-// Updated: Removed address2 from add-company route
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
     name, logo, address1, city, state, zip, country, terms
@@ -283,7 +282,6 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   }
 });
 
-// --- NEW: User-specific Company Details Route ---
 app.get("/user/company-details", requireAuth, async (req, res) => {
   const userCompanyId = req.session.user.companyId;
   if (!userCompanyId) {
@@ -310,8 +308,6 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
   }
 });
 
-
-// --- User Routes ---
 
 app.post("/add-user", async (req, res) => {
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
@@ -412,7 +408,6 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { 
     }
 });
 
-// Updated: Removed address2 from add-shipto route
 app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { companyId, name, address1, city, state, zip, country, is_default } = req.body;
     
@@ -443,7 +438,6 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use aut
     }
 });
 
-// Updated: Removed address2 from update-shipto route
 app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
     const { name, address1, city, state, zip, country } = req.body; // is_default is not in this body
@@ -463,9 +457,6 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { 
     }
 });
 
-// Updated: Fix for "Failed to set default address" error for admins.
-// We now retrieve the company_id from the database based on the addressId being updated, 
-// rather than relying solely on the companyId stored in the admin's session.
 app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
 
@@ -516,7 +507,6 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
     }
 });
 
-// Delete a ship-to address
 app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
     let conn;
@@ -532,13 +522,11 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
     }
 });
 
-// --- NEW: Submit Order Route ---
 app.post("/submit-order", requireAuth, async (req, res) => {
     const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
 
-    // Log the incoming request body for debugging
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
 
     if (!userId || !companyId) {
