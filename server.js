@@ -538,10 +538,15 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
 
+    // Log the incoming request body for debugging
+    console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
+
     if (!userId || !companyId) {
+        console.error("Validation Error: User or company ID missing from session.");
         return res.status(400).json({ error: "User or company ID missing from session." });
     }
     if (!poNumber || !orderedBy || !billingAddress || !shippingAddress || !shippingAddressId || !shippingMethod || !items || items.length === 0) {
+        console.error("Validation Error: Missing required order fields or empty cart.", { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, shippingMethod, items });
         return res.status(400).json({ error: "Missing required order fields or empty cart." });
     }
 
@@ -574,7 +579,8 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         if (conn) {
             await conn.rollback(); // Rollback on error
         }
-        console.error("Error submitting order:", err);
+        // Log the full error object for detailed debugging on the backend server
+        console.error("Error submitting order (Backend):", err); 
         res.status(500).json({ error: "Failed to submit order due to server error." });
     } finally {
         if (conn) conn.end();
