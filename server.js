@@ -555,11 +555,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction(); // Start a transaction
 
-        // Insert into orders table
+        // Insert into orders table (removed user_id as it's not in the table schema based on error)
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (user_id, company_id, po_number, ordered_by, billing_address, shipping_address, shipping_address_id, attn, tag, shipping_method, carrier_account, order_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userId, companyId, poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount]
+            `INSERT INTO orders (company_id, po_number, ordered_by, billing_address, shipping_address, shipping_address_id, attn, tag, shipping_method, carrier_account, order_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [companyId, poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount]
         );
         const orderId = orderResult.insertId;
 
