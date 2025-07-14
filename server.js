@@ -211,6 +211,67 @@ app.post("/logout", (req, res) => {
   });
 });
 
+// --- NEW: Registration Endpoints ---
+
+app.post("/register-company", async (req, res) => {
+  const { name, address1, city, state, zip, country, terms, logo } = req.body;
+  if (!name || !address1 || !city || !state || !zip) {
+    return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    const [result] = await conn.execute(
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30']
+    );
+    res.status(201).json({ message: "Company registered successfully", companyId: result.insertId });
+  } catch (err) {
+    console.error("Failed to register company:", err);
+    // Check for duplicate entry error (e.g., if company name is unique)
+    if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: "Company with this name already exists." });
+    }
+    res.status(500).json({ error: "Failed to register company due to server error" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+app.post("/register-user", async (req, res) => {
+  const { email, firstName, lastName, phone, password, companyId } = req.body;
+  // Role is hardcoded to 'user' for new registrations from checkout
+  const role = "user"; 
+
+  if (!email || !firstName || !lastName || !password || !companyId) {
+    return res.status(400).json({ error: "Email, first name, last name, password, and company ID are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    // Check if user with this email already exists
+    const [existingUsers] = await conn.execute("SELECT id FROM users WHERE email = ?", [email]);
+    if (existingUsers.length > 0) {
+      return res.status(409).json({ error: "User with this email already exists." });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await conn.execute(
+      `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
+    );
+    res.status(201).json({ message: "User registered successfully" });
+  } catch (err) {
+    console.error("Failed to register user:", err);
+    res.status(500).json({ error: "Failed to register user due to server error" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+
 // --- Company Routes (Admin Only) ---
 // These remain requireAdmin as they are for overall company management
 app.get("/companies", requireAdmin, async (req, res) => {
@@ -493,7 +554,7 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
             [addressId]
         );
 
-        await conn.commit(); // Commit the transaction if both updates succeed
+        await conn.commit(); // Commit the transaction
         res.json({ message: "Default shipping address updated successfully." });
 
     } catch (err) {
