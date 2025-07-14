@@ -251,9 +251,18 @@ app.post("/register-user", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     // Check if user with this email already exists
-    const [existingUsers] = await conn.execute("SELECT id FROM users WHERE email = ?", [email]);
-    if (existingUsers.length > 0) {
+    const [existingUsersByEmail] = await conn.execute("SELECT id FROM users WHERE email = ?", [email]);
+    if (existingUsersByEmail.length > 0) {
       return res.status(409).json({ error: "User with this email already exists." });
+    }
+
+    // NEW: Check if user with same first_name and last_name exists within the same company
+    const [existingUsersByName] = await conn.execute(
+        "SELECT id FROM users WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND company_id = ?",
+        [firstName, lastName, companyId]
+    );
+    if (existingUsersByName.length > 0) {
+        return res.status(409).json({ error: "User Name Already Exists" }); // Specific message for frontend
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -271,14 +280,14 @@ app.post("/register-user", async (req, res) => {
   }
 });
 
-// NEW: Endpoint to get company by name
+// NEW: Endpoint to get company by name (case-insensitive)
 app.get("/company-by-name/:name", async (req, res) => {
   const companyName = req.params.name;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [companies] = await conn.execute(
-      "SELECT id, name FROM companies WHERE name = ?",
+      "SELECT id, name FROM companies WHERE LOWER(name) = LOWER(?)", // Case-insensitive comparison
       [companyName]
     );
     if (companies.length > 0) {
