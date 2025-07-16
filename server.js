@@ -60,7 +60,7 @@ const allowedOrigins = [
 ];
 
 // --- CORS Configuration ---
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
     console.log(`[CORS Check] Request Origin: ${origin}`); // Log the incoming origin
     if (!origin || allowedOrigins.includes(origin)) {
@@ -72,11 +72,15 @@ app.use(cors({
     }
   },
   credentials: true,
-  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
-}));
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  // Explicitly allow headers that might be sent in preflight
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // Explicitly list allowed methods
+};
 
-// NEW: Handle all OPTIONS preflight requests globally
-app.options('*', cors());
+app.use(cors(corsOptions));
+// Handle all OPTIONS preflight requests globally using the same corsOptions
+app.options('*', cors(corsOptions));
 
 // --- Session & Body Parsing ---
 app.use(express.json());
