@@ -53,21 +53,11 @@ const sessionStoreOptions = {
 const sessionStore = new MySQLStore(sessionStoreOptions);
 
 
-const allowedOrigins = [
-  "https://www.chicagostainless.com",
-  "https://checkout-backend-jvyx.onrender.com",
-  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
-];
-
 // --- CORS Configuration ---
+// Temporarily allow all origins for debugging CORS issues.
+// IMPORTANT: For production, revert to a specific list of allowed origins.
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: '*', // Allow all origins for debugging
   credentials: true
 }));
 
@@ -450,7 +440,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
   console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
 
 
-  if (!userCompanyId) { // Check if parsing resulted in NaN or 0 (if 0 is not a valid ID)
+  if (isNaN(userCompanyId) || userCompanyId <= 0) { // Check if parsing resulted in NaN or an invalid ID
     console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
     return res.status(404).json({ error: "No company associated with this user." });
   }
