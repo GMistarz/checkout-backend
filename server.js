@@ -7,6 +7,9 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
+// Add this very early log to confirm server startup and logging
+console.log("Server is starting...");
+
 // Add these at the very top of your server.js file, after imports
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
@@ -495,6 +498,39 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     if (conn) {
       conn.end();
       console.log("[User Company Details] Database connection closed.");
+    }
+  }
+});
+
+// NEW: Temporary route to test company details retrieval by hardcoding ID 1
+app.get("/test-company-details", async (req, res) => {
+  const testCompanyId = 1; // Hardcode company ID 1 for testing
+  console.log(`[Test Company Details] Attempting to fetch details for hardcoded ID: ${testCompanyId}`);
+
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    console.log("[Test Company Details] Database connection established.");
+
+    const [companies] = await conn.execute(
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      [testCompanyId]
+    );
+    console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
+
+    if (companies.length === 0) {
+      console.error(`[Test Company Details] Company not found in DB for hardcoded ID: ${testCompanyId}. Query returned no rows.`);
+      return res.status(404).json({ error: `Test company with ID ${testCompanyId} not found.` });
+    }
+    console.log("[Test Company Details] Successfully fetched company details:", companies[0]);
+    res.json(companies[0]);
+  } catch (err) {
+    console.error("Error in /test-company-details route:", err);
+    res.status(500).json({ error: "Failed to retrieve test company details." });
+  } finally {
+    if (conn) {
+      conn.end();
+      console.log("[Test Company Details] Database connection closed.");
     }
   }
 });
