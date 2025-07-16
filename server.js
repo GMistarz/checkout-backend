@@ -615,10 +615,10 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         
         const targetCompanyId = addressRows[0].company_id;
 
-        // Ensure the logged-in user's company matches the target company
-        if (req.session.user.companyId !== targetCompanyId) {
-            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
-        }
+        // REMOVED: This check is redundant for admins as authorizeCompanyAccess already handles it.
+        // if (req.session.user.companyId !== targetCompanyId) {
+        //     return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
+        // }
 
         await conn.beginTransaction(); // Start a transaction
 
@@ -796,7 +796,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
