@@ -430,7 +430,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
-    await conn.execute("DELETE FROM companies WHERE id = ?, [id]");
+    await conn.execute("DELETE FROM companies WHERE id = ?", [id]); // Fixed syntax error here
     res.json({ message: "Company deleted" });
   } catch (err) {
     console.error("Failed to delete company:", err);
@@ -454,10 +454,12 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] Attempting to create database connection...");
     conn = await mysql.createConnection(dbConnectionConfig);
     console.log("[User Company Details] Database connection established. Fetching company details...");
+    // Explicitly cast the ID to UNSIGNED to ensure type compatibility
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = CONVERT(?, UNSIGNED)",
       [userCompanyId]
     );
+    console.log("[User Company Details] Raw query result (companies array):", companies); // Log the actual result
 
     if (companies.length === 0) {
       console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
