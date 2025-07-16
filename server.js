@@ -453,13 +453,19 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
   try {
     console.log("[User Company Details] Attempting to create database connection...");
     conn = await mysql.createConnection(dbConnectionConfig);
-    console.log("[User Company Details] Database connection established. Fetching company details...");
+    console.log("[User Company Details] Database connection established.");
+
+    // NEW: Log all companies to verify table visibility
+    const [allCompanies] = await conn.execute("SELECT id, name FROM companies");
+    console.log("[User Company Details] All companies found in DB:", allCompanies);
+
+    console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Explicitly cast the ID to UNSIGNED to ensure type compatibility
     const [companies] = await conn.execute(
       "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = CONVERT(?, UNSIGNED)",
       [userCompanyId]
     );
-    console.log("[User Company Details] Raw query result (companies array):", companies); // Log the actual result
+    console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
 
     if (companies.length === 0) {
       console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
