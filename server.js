@@ -79,8 +79,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// Handle all OPTIONS preflight requests globally using the same corsOptions
-app.options('*', cors(corsOptions));
+// Removed: app.options('*', cors(corsOptions)); // This line was causing the TypeError
 
 // --- Session & Body Parsing ---
 app.use(express.json());
@@ -440,7 +439,6 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
     await conn.execute("DELETE FROM companies WHERE id = ?", [id]); 
     res.json({ message: "Company deleted" });
   } catch (err) {
