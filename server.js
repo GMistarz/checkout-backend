@@ -450,25 +450,28 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
 
   let conn;
   try {
+    console.log("[User Company Details] Attempting to create database connection...");
     conn = await mysql.createConnection(dbConnectionConfig);
-    console.log(`[User Company Details] Fetching company details for ID: ${userCompanyId}`);
+    console.log("[User Company Details] Database connection established. Fetching company details...");
     const [companies] = await conn.execute(
       "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
       [userCompanyId]
     );
 
     if (companies.length === 0) {
-      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}`);
+      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
       return res.status(404).json({ error: "Company not found for this user." });
     }
-    console.log("[User Company Details] Successfully fetched company details.");
+    console.log("[User Company Details] Successfully fetched company details:", companies[0]);
     res.json(companies[0]);
   } catch (err) {
-    console.error("Error fetching user's company details:", err);
+    console.error("Error in /user/company-details route:", err); // Log the full error object
     res.status(500).json({ error: "Failed to retrieve user's company details." });
   } finally {
-    if (conn) conn.end();
-    console.log("[User Company Details] Database connection closed.");
+    if (conn) {
+      conn.end();
+      console.log("[User Company Details] Database connection closed.");
+    }
   }
 });
 
