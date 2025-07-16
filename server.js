@@ -430,7 +430,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
-    await conn.execute("DELETE FROM companies WHERE id = ?", [id]); // Fixed syntax error here
+    await conn.execute("DELETE FROM companies WHERE id = ?", [id]); 
     res.json({ message: "Company deleted" });
   } catch (err) {
     console.error("Failed to delete company:", err);
@@ -443,6 +443,8 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
 app.get("/user/company-details", requireAuth, async (req, res) => {
   const userCompanyId = req.session.user.companyId;
   console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
+  console.log(`[User Company Details] Type of userCompanyId: ${typeof userCompanyId}`);
+
 
   if (!userCompanyId) {
     console.error("[User Company Details] No company associated with this user in session.");
@@ -460,9 +462,9 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] All companies found in DB:", allCompanies);
 
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
-    // Explicitly cast the ID to UNSIGNED to ensure type compatibility
+    // Removed explicit CONVERT and using direct parameter binding
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = CONVERT(?, UNSIGNED)",
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
