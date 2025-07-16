@@ -53,11 +53,22 @@ const sessionStoreOptions = {
 const sessionStore = new MySQLStore(sessionStoreOptions);
 
 
+const allowedOrigins = [
+  "https://www.chicagostainless.com",
+  "https://checkout-backend-jvyx.onrender.com",
+  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
+];
+
 // --- CORS Configuration ---
-// Temporarily allow all origins for debugging CORS issues.
-// IMPORTANT: For production, revert to a specific list of allowed origins.
+// Reverted to specific origins as '*' is incompatible with credentials: true
 app.use(cors({
-  origin: '*', // Allow all origins for debugging
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 
