@@ -119,6 +119,11 @@ const authorizeCompanyAccess = async (req, res, next) => {
         return res.status(401).json({ error: "Unauthorized: Login required" });
     }
 
+    // Allow admin users to bypass company-specific authorization
+    if (req.session.user.role === 'admin') {
+        return next();
+    }
+
     const userCompanyId = req.session.user.companyId;
 
     // Determine the companyId from the request based on route
