@@ -7,6 +7,18 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
+// Add these at the very top of your server.js file, after imports
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+  // Log the error and then exit. A process manager should restart the app.
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
+  // Log unhandled promise rejections.
+});
+
 // NEW: Import the MySQL session store
 const MySQLStore = require('express-mysql-session')(session);
 
@@ -429,27 +441,34 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
 
 app.get("/user/company-details", requireAuth, async (req, res) => {
   const userCompanyId = req.session.user.companyId;
+  console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
+
   if (!userCompanyId) {
+    console.error("[User Company Details] No company associated with this user in session.");
     return res.status(404).json({ error: "No company associated with this user." });
   }
 
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
+    console.log(`[User Company Details] Fetching company details for ID: ${userCompanyId}`);
     const [companies] = await conn.execute(
       "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
       [userCompanyId]
     );
 
     if (companies.length === 0) {
+      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}`);
       return res.status(404).json({ error: "Company not found for this user." });
     }
+    console.log("[User Company Details] Successfully fetched company details.");
     res.json(companies[0]);
   } catch (err) {
     console.error("Error fetching user's company details:", err);
     res.status(500).json({ error: "Failed to retrieve user's company details." });
   } finally {
     if (conn) conn.end();
+    console.log("[User Company Details] Database connection closed.");
   }
 });
 
@@ -890,4 +909,4 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
-}); 
+});
