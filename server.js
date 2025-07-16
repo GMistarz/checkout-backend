@@ -114,9 +114,15 @@ const requireAuth = (req, res, next) => {
 // --- NEW: Helper Middleware for Company Access Authorization ---
 // This middleware checks if the user is authenticated and if their company_id
 // matches the company_id being accessed in the request.
+// Admins can access any company's data.
 const authorizeCompanyAccess = async (req, res, next) => {
     if (!req.session.user) {
         return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+
+    // Allow admins to access any company's data
+    if (req.session.user.role === "admin") {
+        return next();
     }
 
     const userCompanyId = req.session.user.companyId;
@@ -392,6 +398,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete company:", err);
     res.status(500).json({ error: "Failed to delete company" });
+
   } finally {
     if (conn) conn.end();
   }
