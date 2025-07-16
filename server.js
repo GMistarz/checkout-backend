@@ -119,11 +119,6 @@ const authorizeCompanyAccess = async (req, res, next) => {
         return res.status(401).json({ error: "Unauthorized: Login required" });
     }
 
-    // Allow admin users to bypass company-specific authorization
-    if (req.session.user.role === 'admin') {
-        return next();
-    }
-
     const userCompanyId = req.session.user.companyId;
 
     // Determine the companyId from the request based on route
@@ -428,28 +423,6 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
   }
 });
 
-// NEW: Endpoint to get a single user by ID (for admin editing)
-app.get("/user/:userId", requireAdmin, async (req, res) => {
-  const { userId } = req.params;
-  let conn;
-  try {
-    conn = await mysql.createConnection(dbConnectionConfig);
-    const [users] = await conn.execute(
-      "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
-      [userId]
-    );
-    if (users.length === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
-    res.json(users[0]);
-  } catch (err) {
-    console.error("Error fetching user details by ID:", err);
-    res.status(500).json({ error: "Failed to retrieve user details." });
-  } finally {
-    if (conn) conn.end();
-  }
-});
-
 
 app.post("/add-user", async (req, res) => {
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
@@ -540,7 +513,8 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-        const [addresses] = await conn.execute("SELECT * FROM shipto_addresses WHERE company_id = ?", [companyId]);
+        // Include company_name in the select query
+        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ?", [companyId]);
         res.json(addresses);
     } catch (err) {
         console.error("Error fetching ship-to addresses:", err);
@@ -551,10 +525,10 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { 
 });
 
 app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
-    const { companyId, name, address1, city, state, zip, country, is_default } = req.body;
+    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; // Added company_name
     
-    if (!companyId || !address1 || !city || !state || !zip) {
-        return res.status(400).json({ error: "Missing required fields." });
+    if (!companyId || !name || !address1 || !city || !state || !zip) { // 'name' is now 'Contact Name'
+        return res.status(400).json({ error: "Missing required fields (Company ID, Contact Name, Address, City, State, Zip)." });
     }
     let conn;
     try {
@@ -566,10 +540,11 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use aut
                 [companyId]
             );
         }
+        // Include company_name in the insert statement
         const [result] = await conn.execute(
-            `INSERT INTO shipto_addresses (company_id, name, address1, city, state, zip, country, is_default) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, name, address1, city, state, zip, country, is_default ? 1 : 0]
+            `INSERT INTO shipto_addresses (company_id, name, company_name, address1, city, state, zip, country, is_default) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, name, company_name || null, address1, city, state, zip, country, is_default ? 1 : 0]
         );
         res.status(201).json({ id: result.insertId, message: "Address added successfully" });
     } catch (err) {
@@ -582,13 +557,14 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use aut
 
 app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
-    const { name, address1, city, state, zip, country } = req.body; // is_default is not in this body
+    const { name, company_name, address1, city, state, zip, country } = req.body; // Added company_name
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // Include company_name in the update statement
         await conn.execute(
-            `UPDATE shipto_addresses SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
-            [name, address1, city, state, zip, country, addressId]
+            `UPDATE shipto_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
+            [name, company_name || null, address1, city, state, zip, country, addressId]
         );
         res.json({ message: "Address updated successfully" });
     } catch (err) {
@@ -615,10 +591,10 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         
         const targetCompanyId = addressRows[0].company_id;
 
-        // REMOVED: This check is redundant for admins as authorizeCompanyAccess already handles it.
-        // if (req.session.user.companyId !== targetCompanyId) {
-        //     return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
-        // }
+        // Ensure the logged-in user's company matches the target company
+        if (req.session.user.companyId !== targetCompanyId) {
+            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
+        }
 
         await conn.beginTransaction(); // Start a transaction
 
@@ -796,7 +772,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, JSON.stringify(items)]
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
