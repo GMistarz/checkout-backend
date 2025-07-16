@@ -60,17 +60,23 @@ const allowedOrigins = [
 ];
 
 // --- CORS Configuration ---
-// Reverted to specific origins as '*' is incompatible with credentials: true
 app.use(cors({
   origin: function (origin, callback) {
+    console.log(`[CORS Check] Request Origin: ${origin}`); // Log the incoming origin
     if (!origin || allowedOrigins.includes(origin)) {
+      console.log(`[CORS Check] Origin ${origin} ALLOWED.`);
       callback(null, true);
     } else {
+      console.error(`[CORS Check] Origin ${origin} NOT ALLOWED.`);
       callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200 // Some legacy browsers (IE11, various SmartTVs) choke on 204
 }));
+
+// NEW: Handle all OPTIONS preflight requests globally
+app.options('*', cors());
 
 // --- Session & Body Parsing ---
 app.use(express.json());
