@@ -33,6 +33,7 @@ const dbConnectionConfig = {
   database: "gmistarz_cse",
   // No session-specific options here
   // port: 3306, // Uncomment if your MySQL server is not on the default port
+  connectTimeout: 10000 // Add a 10-second connection timeout (10000 ms)
 };
 
 // Configuration for the express-mysql-session store
@@ -429,7 +430,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     // Deleting company also removes associated users and ship-to addresses due to CASCADE ON DELETE in the foreign keys
-    await conn.execute("DELETE FROM companies WHERE id = ?", [id]);
+    await conn.execute("DELETE FROM companies WHERE id = ?, [id]");
     res.json({ message: "Company deleted" });
   } catch (err) {
     console.error("Failed to delete company:", err);
