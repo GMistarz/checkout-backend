@@ -441,13 +441,17 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
 });
 
 app.get("/user/company-details", requireAuth, async (req, res) => {
-  const userCompanyId = req.session.user.companyId;
+  let userCompanyId = req.session.user.companyId; // Declare with let to allow reassignment
   console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
-  console.log(`[User Company Details] Type of userCompanyId: ${typeof userCompanyId}`);
+  console.log(`[User Company Details] Type of userCompanyId (before parse): ${typeof userCompanyId}`);
+
+  // Explicitly parse to an integer to ensure type consistency for the SQL query
+  userCompanyId = parseInt(userCompanyId, 10);
+  console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
 
 
-  if (!userCompanyId) {
-    console.error("[User Company Details] No company associated with this user in session.");
+  if (!userCompanyId) { // Check if parsing resulted in NaN or 0 (if 0 is not a valid ID)
+    console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
     return res.status(404).json({ error: "No company associated with this user." });
   }
 
@@ -462,7 +466,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] All companies found in DB:", allCompanies);
 
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
-    // Removed explicit CONVERT and using direct parameter binding
+    // Using direct parameter binding for the integer ID
     const [companies] = await conn.execute(
       "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
       [userCompanyId]
