@@ -227,6 +227,30 @@ app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
   }
 });
 
+// NEW: Get single user by ID (for editing)
+app.get("/user/:userId", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [users] = await conn.execute(
+            "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
+            [userId]
+        );
+        const user = users[0];
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        res.json(user);
+    } catch (err) {
+        console.error("Error fetching user by ID:", err);
+        res.status(500).json({ error: "Failed to retrieve user details" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+
 app.post("/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
@@ -398,7 +422,6 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Failed to delete company:", err);
     res.status(500).json({ error: "Failed to delete company" });
-
   } finally {
     if (conn) conn.end();
   }
