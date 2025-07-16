@@ -4,6 +4,8 @@ const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
+const nodemailer = require("nodemailer");
+const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
 // NEW: Import the MySQL session store
 const MySQLStore = require('express-mysql-session')(session);
@@ -66,11 +68,31 @@ app.use(session({
   saveUninitialized: false,
   store: sessionStore, // <-- THIS IS THE CRUCIAL CHANGE for persistent sessions
   cookie: {
-    sameSite: "none",  // Required for cross-site cookies
+    sameSite: "none",  // Required for cross-site cookies to be sent from different origins
     secure: true,      // Required for sameSite: "none" and highly recommended for production (Render provides HTTPS)
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
+
+// --- Nodemailer Transporter Configuration ---
+// IMPORTANT: Replace with your actual email service credentials or environment variables.
+// Note: For some SMTP servers, the 'from' address in mailOptions must match or be an alias
+// of the 'user' in the auth object below. If you encounter issues, ensure your SMTP
+// provider allows sending from arbitrary 'from' addresses, or consider using your
+// authenticated email address as the 'from' address in mailOptions.
+const transporter = nodemailer.createTransport({
+    host: "smtp.your-email-service.com", // e.g., "smtp.gmail.com" for Gmail, "smtp.mailgun.org" for Mailgun
+    port: 587, // Common ports: 587 (TLS), 465 (SSL)
+    secure: false, // Use 'true' if port is 465 (SSL), 'false' for other ports (TLS)
+    auth: {
+        user: "your-email@example.com", // Your sending email address (this account must be authenticated)
+        pass: "your-email-password" // Your email password or app-specific password
+    },
+    tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
+    }
+});
 
 // --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
@@ -615,6 +637,115 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
     }
 });
 
+// Helper function to generate HTML for the order email
+function generateOrderHtmlEmail(orderData) {
+    let itemsHtml = orderData.items.map(item => `
+        <tr>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
+        </tr>
+    `).join('');
+
+    const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    return `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
+                <h1 style="color: #333;">Order Information</h1>
+            </div>
+            
+            <p>Order details:</p>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Billed To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
+                    <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                    <p><strong>PO#:</strong> ${orderData.poNumber}</p>
+                    <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                </div>
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Ship To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
+                    <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                    <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
+                    <p><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
+                    <p><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                </div>
+            </div>
+
+            <h2 style="color: #555;">Order Summary</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHtml}
+                </tbody>
+            </table>
+            <p style="font-weight: bold; text-align: right;">Item Count: ${totalQuantity}</p>
+            <p style="font-weight: bold; text-align: right;">Total Price: $${totalPrice.toFixed(2)}</p>
+
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
+                <strong>Chicago Stainless Equipment, Inc.</strong><br>
+                1280 SW 34th St<br>
+                Palm City, FL 34990 USA<br>
+                772-781-1441
+            </div>
+        </div>
+    `;
+}
+
+// NEW: Function to generate PDF from HTML content
+async function generatePdfFromHtml(htmlContent) {
+    let browser;
+    try {
+        // Launch a headless browser
+        browser = await puppeteer.launch({
+            headless: true, // Set to 'true' for production environments
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
+        });
+        const page = await browser.newPage();
+
+        // Set content of the page
+        await page.setContent(htmlContent, {
+            waitUntil: 'networkidle0' // Wait until network is idle
+        });
+
+        // Generate PDF
+        const pdfBuffer = await page.pdf({
+            format: 'Letter', // Or 'A4', etc.
+            printBackground: true, // Ensure background colors/images are printed
+            margin: {
+                top: '0.5in',
+                right: '0.5in',
+                bottom: '0.5in',
+                left: '0.5in'
+            }
+        });
+        return pdfBuffer;
+    } catch (error) {
+        console.error("Error generating PDF:", error);
+        throw new Error("Failed to generate PDF for order confirmation.");
+    } finally {
+        if (browser) {
+            await browser.close();
+        }
+    }
+}
+
+
 app.post("/submit-order", requireAuth, async (req, res) => {
     const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
     const userId = req.session.user.id;
@@ -642,8 +773,68 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         );
         const orderId = orderResult.insertId;
 
+        // Fetch company name for the email subject
+        let companyName = "Unknown Company";
+        if (companyId) {
+            const [companyRows] = await conn.execute("SELECT name FROM companies WHERE id = ?", [companyId]);
+            if (companyRows.length > 0) {
+                companyName = companyRows[0].name;
+            }
+        }
+
         await conn.commit(); // Commit the transaction
-        res.status(200).json({ message: "Order submitted successfully!", orderId: orderId });
+
+        // NEW: Generate HTML for the email body and PDF
+        const orderDetailsForEmail = {
+            poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount, items,
+            terms: req.body.terms // Ensure terms are passed if available
+        };
+        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
+
+        let pdfBuffer;
+        try {
+            pdfBuffer = await generatePdfFromHtml(orderHtmlContent);
+            console.log("PDF generated successfully.");
+        } catch (pdfError) {
+            console.error("Failed to generate PDF, proceeding without attachment:", pdfError);
+            // Optionally, send an email without the PDF if PDF generation fails
+        }
+
+        // NEW: Send order information email to you (the administrator) with PDF attachment
+        const myEmailAddress = "Greg@ChicagoStainless.com"; // Your specified recipient email address
+
+        const mailOptions = {
+            from: userEmail, // Email will now come from the logged-in user's email address
+            to: myEmailAddress, // Email will be sent to this address
+            subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
+            html: `
+                <p>Hello,</p>
+                <p>A new order has been submitted through the checkout page.</p>
+                <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>Customer Email:</strong> ${userEmail}</p>
+                <p><strong>PO Number:</strong> ${poNumber}</p>
+                <p>Please find the detailed order information attached as a PDF.</p>
+                <p>Thank you.</p>
+            `,
+            attachments: pdfBuffer ? [
+                {
+                    filename: `Order_${orderId}_${poNumber}.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ] : []
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending order notification email:", error);
+                // This error should not prevent the frontend from receiving success
+            } else {
+                console.log("Order notification email sent:", info.response);
+            }
+        });
+
+        res.status(200).json({ message: "Order submitted successfully! Notification email sent.", orderId: orderId });
 
     } catch (err) {
         if (conn) {
