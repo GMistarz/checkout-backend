@@ -428,6 +428,28 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
   }
 });
 
+// NEW: Endpoint to get a single user by ID (for admin editing)
+app.get("/user/:userId", requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    const [users] = await conn.execute(
+      "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
+      [userId]
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ error: "User not found." });
+    }
+    res.json(users[0]);
+  } catch (err) {
+    console.error("Error fetching user details by ID:", err);
+    res.status(500).json({ error: "Failed to retrieve user details." });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
 
 app.post("/add-user", async (req, res) => {
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
