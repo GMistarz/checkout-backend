@@ -271,7 +271,58 @@ app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
   }
 });
 
-// NEW: Get single user by ID (for editing)
+// MODIFIED: Moved this route definition to appear BEFORE /user/:userId
+app.get("/user/company-details", requireAuth, async (req, res) => {
+  let userCompanyId = req.session.user.companyId; // Declare with let to allow reassignment
+  console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
+  console.log(`[User Company Details] Type of userCompanyId (before parse): ${typeof userCompanyId}`);
+
+  // Explicitly parse to an integer to ensure type consistency for the SQL query
+  userCompanyId = parseInt(userCompanyId, 10);
+  console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
+
+
+  if (isNaN(userCompanyId) || userCompanyId <= 0) { // Check if parsing resulted in NaN or an invalid ID
+    console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
+    return res.status(404).json({ error: "No company associated with this user." });
+  }
+
+  let conn;
+  try {
+    console.log("[User Company Details] Attempting to create database connection...");
+    conn = await mysql.createConnection(dbConnectionConfig);
+    console.log("[User Company Details] Database connection established.");
+
+    // NEW: Log all companies to verify table visibility
+    const [allCompanies] = await conn.execute("SELECT id, name FROM companies");
+    console.log("[User Company Details] All companies found in DB:", allCompanies);
+
+    console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
+    // Using direct parameter binding for the integer ID
+    const [companies] = await conn.execute(
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      [userCompanyId]
+    );
+    console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
+
+    if (companies.length === 0) {
+      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
+      return res.status(404).json({ error: "Company not found for this user." });
+    }
+    console.log("[User Company Details] Successfully fetched company details:", companies[0]);
+    res.json(companies[0]);
+  } catch (err) {
+    console.error("Error in /user/company-details route:", err); // Log the full error object
+    res.status(500).json({ error: "Failed to retrieve user's company details." });
+  } finally {
+    if (conn) {
+      conn.end();
+      console.log("[User Company Details] Database connection closed.");
+    }
+  }
+});
+
+// NEW: Get single user by ID (for editing) - This route should come AFTER /user/company-details
 app.get("/user/:userId", requireAdmin, async (req, res) => {
     const { userId } = req.params;
     let conn;
@@ -467,57 +518,6 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
     res.status(500).json({ error: "Failed to delete company" });
   } finally {
     if (conn) conn.end();
-  }
-});
-
-// MODIFIED: Changed requireAdmin to requireAuth for this route
-app.get("/user/company-details", requireAuth, async (req, res) => {
-  let userCompanyId = req.session.user.companyId; // Declare with let to allow reassignment
-  console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
-  console.log(`[User Company Details] Type of userCompanyId (before parse): ${typeof userCompanyId}`);
-
-  // Explicitly parse to an integer to ensure type consistency for the SQL query
-  userCompanyId = parseInt(userCompanyId, 10);
-  console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
-
-
-  if (isNaN(userCompanyId) || userCompanyId <= 0) { // Check if parsing resulted in NaN or an invalid ID
-    console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
-    return res.status(404).json({ error: "No company associated with this user." });
-  }
-
-  let conn;
-  try {
-    console.log("[User Company Details] Attempting to create database connection...");
-    conn = await mysql.createConnection(dbConnectionConfig);
-    console.log("[User Company Details] Database connection established.");
-
-    // NEW: Log all companies to verify table visibility
-    const [allCompanies] = await conn.execute("SELECT id, name FROM companies");
-    console.log("[User Company Details] All companies found in DB:", allCompanies);
-
-    console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
-    // Using direct parameter binding for the integer ID
-    const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
-      [userCompanyId]
-    );
-    console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
-
-    if (companies.length === 0) {
-      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
-      return res.status(404).json({ error: "Company not found for this user." });
-    }
-    console.log("[User Company Details] Successfully fetched company details:", companies[0]);
-    res.json(companies[0]);
-  } catch (err) {
-    console.error("Error in /user/company-details route:", err); // Log the full error object
-    res.status(500).json({ error: "Failed to retrieve user's company details." });
-  } finally {
-    if (conn) {
-      conn.end();
-      console.log("[User Company Details] Database connection closed.");
-    }
   }
 });
 
