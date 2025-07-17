@@ -707,7 +707,8 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { 
     }
 });
 
-app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+// MODIFIED: /api/shipto/:addressId/set-default route to allow admins to set default for any company
+app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
     const { addressId } = req.params;
 
     let conn;
@@ -723,10 +724,8 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         
         const targetCompanyId = addressRows[0].company_id;
 
-        // Ensure the logged-in user's company matches the target company
-        if (req.session.user.companyId !== targetCompanyId) {
-            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
-        }
+        // The requireAdmin middleware already ensures only admins can reach here.
+        // No need for an additional companyId match check for admins.
 
         await conn.beginTransaction(); // Start a transaction
 
@@ -737,7 +736,6 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         );
 
         // 3. Set the 'is_default' flag to 1 for the selected address
-        // We only need to check the addressId here since we verified the companyId in step 2.
         await conn.execute(
             `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
             [addressId]
