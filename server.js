@@ -469,13 +469,34 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // Updated: Removed address2 from edit-company route
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, city, state, zip, country, terms, logo, discount, notes } = req.body; // Added discount and notes
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "Company ID is required for update." });
+  }
+
+  const fieldsToUpdate = [];
+  const values = [];
+
+  // Dynamically build the SET clause for the UPDATE query
+  for (const key in req.body) {
+    if (key !== 'id') { // Exclude 'id' from the SET clause
+      fieldsToUpdate.push(`${key} = ?`);
+      values.push(req.body[key]);
+    }
+  }
+
+  if (fieldsToUpdate.length === 0) {
+    return res.status(400).json({ error: "No fields provided for update." });
+  }
+
+  values.push(id); // Add the ID for the WHERE clause
+
   let conn;
   try {
-    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    conn = await mysql.createConnection(dbConnectionConfig);
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ?, discount = ?, notes = ? WHERE id = ?`, // Added discount and notes
-      [name, address1, city, state, zip, country, terms, logo, discount, notes, id] // Added discount and notes
+      `UPDATE companies SET ${fieldsToUpdate.join(', ')} WHERE id = ?`,
+      values
     );
     res.json({ message: "Company updated" });
   } catch (err) {
