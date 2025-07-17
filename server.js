@@ -708,7 +708,7 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { 
 });
 
 // MODIFIED: /api/shipto/:addressId/set-default route to allow admins to set default for any company
-app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => {
+app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Changed middleware to authorizeCompanyAccess
     const { addressId } = req.params;
 
     let conn;
@@ -724,8 +724,10 @@ app.put("/api/shipto/:addressId/set-default", requireAdmin, async (req, res) => 
         
         const targetCompanyId = addressRows[0].company_id;
 
-        // The requireAdmin middleware already ensures only admins can reach here.
-        // No need for an additional companyId match check for admins.
+        // The authorizeCompanyAccess middleware now handles the permission check.
+        // If the user is an admin, they will pass. If they are a regular user,
+        // authorizeCompanyAccess will ensure targetCompanyId matches their companyId.
+        // Therefore, the explicit check `if (req.session.user.companyId !== targetCompanyId)` is removed from here.
 
         await conn.beginTransaction(); // Start a transaction
 
