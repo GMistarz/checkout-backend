@@ -300,7 +300,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Using direct parameter binding for the integer ID
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      "SELECT name, address1, city, state, zip, country, terms, discount FROM companies WHERE id = ?", // Include discount
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
@@ -361,7 +361,7 @@ app.post("/logout", (req, res) => {
 // --- NEW: Registration Endpoints ---
 
 app.post("/register-company", async (req, res) => {
-  const { name, address1, city, state, zip, country, terms, logo } = req.body;
+  const { name, address1, city, state, zip, country, terms, logo, discount } = req.body; // Added discount
   if (!name || !address1 || !city || !state || !zip) {
     return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
   }
@@ -369,9 +369,9 @@ app.post("/register-company", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30']
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Added discount column
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0] // Added discount value
     );
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId });
   } catch (err) {
@@ -457,7 +457,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [companies] = await conn.execute("SELECT * FROM companies");
+    const [companies] = await conn.execute("SELECT *, discount FROM companies"); // Include discount in select
     res.json(companies);
   } catch (err) {
     console.error("Failed to retrieve companies:", err);
@@ -469,13 +469,13 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // Updated: Removed address2 from edit-company route
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, city, state, zip, country, terms, logo } = req.body;
+  const { id, name, address1, city, state, zip, country, terms, logo, discount } = req.body; // Added discount
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
-      [name, address1, city, state, zip, country, terms, logo, id]
+      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ?, discount = ? WHERE id = ?`, // Added discount
+      [name, address1, city, state, zip, country, terms, logo, discount, id] // Added discount
     );
     res.json({ message: "Company updated" });
   } catch (err) {
@@ -488,15 +488,15 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, city, state, zip, country, terms
+    name, logo, address1, city, state, zip, country, terms, discount // Added discount
   } = req.body;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, logo, address1, city, state, zip, country, terms]);
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms, discount]); // Added discount
     res.status(200).json({ message: "Company created" });
   } catch (err) {
     console.error("Failed to create company:", err);
@@ -532,7 +532,7 @@ app.get("/test-company-details", async (req, res) => {
     console.log("[Test Company Details] Database connection established.");
 
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      "SELECT name, address1, city, state, zip, country, terms, discount FROM companies WHERE id = ?", // Include discount
       [testCompanyId]
     );
     console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
@@ -936,7 +936,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         }
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
-        const myEmailAddress = "Greg@ChicagoStainless.com"; // Your specified recipient email address
+        const myEmailAddress = "Greg@ChicagoStainlessStainless.com"; // Your specified recipient email address
 
         const mailOptions = {
             from: userEmail, // Email will now come from the logged-in user's email address
