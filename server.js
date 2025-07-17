@@ -28,6 +28,10 @@ const MySQLStore = require('express-mysql-session')(session);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Log the port being used
+console.log(`Application will attempt to listen on port: ${PORT}`);
+
+
 // Separate database configuration for direct MySQL2 connections
 const dbConnectionConfig = {
   host: "192.254.232.38",
@@ -202,12 +206,18 @@ const authorizeCompanyAccess = async (req, res, next) => {
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn; // Declare conn outside try-finally to ensure it's accessible for closing
+  console.log(`[Login Route] Attempting login for email: ${email}`);
   try {
+    console.log("[Login Route] Attempting to create database connection...");
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    console.log("[Login Route] Database connection established.");
+
     const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
+    console.log(`[Login Route] Query result for user ${email}:`, users);
 
     const user = users[0];
     if (!user || !(await bcrypt.compare(password, user.password))) {
+      console.log("[Login Route] Invalid credentials.");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -230,16 +240,23 @@ app.post("/login", async (req, res) => {
     console.error("Login error:", err);
     res.status(500).json({ error: "Login failed due to server error" });
   } finally {
-    if (conn) conn.end(); // Ensure connection is closed
+    if (conn) {
+        conn.end(); // Ensure connection is closed
+        console.log("[Login Route] Database connection closed.");
+    }
   }
 });
 
 app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
+  console.log("[User Profile Route] Route hit.");
   const { user } = req.session;
+  console.log("[User Profile Route] Session user:", user);
+
   // The session 'user' object already contains most of the profile data needed.
   // We can directly send it, or fetch from DB if more fields are needed.
   // For simplicity, sending directly from session, ensuring it includes first_name and last_name.
   if (user) {
+      console.log("[User Profile Route] Sending user profile from session.");
       res.json({
           email: user.email,
           role: user.role,
@@ -249,6 +266,7 @@ app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
       });
   } else {
       // This case should ideally be caught by requireAuth, but as a fallback:
+      console.log("[User Profile Route] User not found in session (should be caught by requireAuth).");
       res.status(401).json({ error: "Not logged in" });
   }
 });
