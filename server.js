@@ -452,6 +452,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   }
 });
 
+// MODIFIED: Changed requireAdmin to requireAuth for this route
 app.get("/user/company-details", requireAuth, async (req, res) => {
   let userCompanyId = req.session.user.companyId; // Declare with let to allow reassignment
   console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
@@ -551,7 +552,8 @@ app.post("/add-user", async (req, res) => {
       [email, firstName, lastName, phone, role, hashedPassword, companyId]
     );
     res.json({ message: "User added" });
-  } catch (err) {
+  }
+   catch (err) {
     console.error("Failed to add user:", err);
     res.status(500).json({ error: "Failed to add user" });
   } finally {
