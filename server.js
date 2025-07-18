@@ -111,12 +111,12 @@ app.use(session({
 // provider allows sending from arbitrary 'from' addresses, or consider using your
 // authenticated email address as the 'from' address in mailOptions.
 const transporter = nodemailer.createTransport({
-    host: "smtp.your-email-service.com", // e.g., "smtp.gmail.com" for Gmail, "smtp.mailgun.org" for Mailgun
-    port: 587, // Common ports: 587 (TLS), 465 (SSL)
-    secure: false, // Use 'true' if port is 465 (SSL), 'false' for other ports (TLS)
+    host: process.env.SMTP_HOST, // Using environment variable
+    port: process.env.SMTP_PORT, // Using environment variable
+    secure: process.env.SMTP_SECURE === 'true', // Using environment variable, convert string to boolean
     auth: {
-        user: "your-email@example.com", // Your sending email address (this account must be authenticated)
-        pass: "your-email-password" // Your email password or app-specific password
+        user: process.env.EMAIL_USER, // Using environment variable
+        pass: process.env.EMAIL_PASS // Using environment variable
     },
     tls: {
         // Do not fail on invalid certs
@@ -300,7 +300,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Using direct parameter binding for the integer ID
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Include discount and notes
+      "SELECT name, address1, city, state, zip, country, terms, discount FROM companies WHERE id = ?", // Removed notes
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
@@ -361,7 +361,7 @@ app.post("/logout", (req, res) => {
 // --- NEW: Registration Endpoints ---
 
 app.post("/register-company", async (req, res) => {
-  const { name, address1, city, state, zip, country, terms, logo, discount, notes } = req.body; // Added discount and notes
+  const { name, address1, city, state, zip, country, terms, logo, discount } = req.body; // Removed notes
   if (!name || !address1 || !city || !state || !zip) {
     return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
   }
@@ -369,9 +369,9 @@ app.post("/register-company", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Added discount and notes columns
-      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, notes || ''] // Added discount and notes values
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Removed notes column
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0] // Removed notes value
     );
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId });
   } catch (err) {
@@ -457,7 +457,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [companies] = await conn.execute("SELECT *, discount, notes FROM companies"); // Include discount and notes in select
+    const [companies] = await conn.execute("SELECT *, discount FROM companies"); // Removed notes in select
     res.json(companies);
   } catch (err) {
     console.error("Failed to retrieve companies:", err);
@@ -469,15 +469,36 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // Updated: Removed address2 from edit-company route
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, city, state, zip, country, terms, logo, discount, notes } = req.body; // Added discount and notes
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "Company ID is required for update." });
+  }
+
+  const fieldsToUpdate = [];
+  const values = [];
+
+  // Dynamically build the SET clause for the UPDATE query
+  for (const key in req.body) {
+    if (key !== 'id' && key !== 'notes') { // Exclude 'id' and 'notes' from the SET clause
+      fieldsToUpdate.push(`${key} = ?`);
+      values.push(req.body[key]);
+    }
+  }
+
+  if (fieldsToUpdate.length === 0) {
+    return res.status(400).json({ error: "No fields provided for update." });
+  }
+
+  values.push(id); // Add the ID for the WHERE clause
+
   let conn;
   try {
-    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    conn = await mysql.createConnection(dbConnectionConfig);
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ?, discount = ?, notes = ? WHERE id = ?`, // Added discount and notes
-      [name, address1, city, state, zip, country, terms, logo, discount, notes, id] // Added discount and notes
+      `UPDATE companies SET ${fieldsToUpdate.join(', ')} WHERE id = ?`,
+      values
     );
-    res.json({ message: "Company updated", id: id }); // Return the ID of the updated company
+    res.json({ message: "Company updated" });
   } catch (err) {
     console.error("Failed to update company:", err);
     res.status(500).json({ error: "Failed to update company" });
@@ -488,16 +509,16 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, city, state, zip, country, terms, discount, notes // Added discount and notes
+    name, logo, address1, city, state, zip, country, terms, discount // Removed notes
   } = req.body;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [result] = await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, logo, address1, city, state, zip, country, terms, discount, notes]); // Added discount and notes
-    res.status(200).json({ message: "Company created", id: result.insertId }); // Return the new ID
+    await conn.execute(`
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms, discount]); // Removed notes
+    res.status(200).json({ message: "Company created" });
   } catch (err) {
     console.error("Failed to create company:", err);
     res.status(500).json({ error: "Failed to create company" });
@@ -532,7 +553,7 @@ app.get("/test-company-details", async (req, res) => {
     console.log("[Test Company Details] Database connection established.");
 
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Include discount and notes
+      "SELECT name, address1, city, state, zip, country, terms, discount FROM companies WHERE id = ?", // Removed notes
       [testCompanyId]
     );
     console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
