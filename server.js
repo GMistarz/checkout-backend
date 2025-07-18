@@ -1,4 +1,4 @@
-requirerequire('dotenv').config(); // Loads environment variables for emailing
+require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
