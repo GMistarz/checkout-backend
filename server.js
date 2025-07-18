@@ -9,9 +9,10 @@ const nodemailer = require("nodemailer");
 
 // NEW: Tell Puppeteer not to download Chromium (already present)
 process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-// UPDATED: Specify the path to the Chromium executable for Render.com
-// Trying a common alternative path for Chromium on Render.com.
-process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+// UPDATED: Specify the path to the Chromium executable for Render.com.
+// We'll try a common Render path, and then let Puppeteer try its default if that fails.
+// It's crucial that one of these paths points to a valid Chromium installation on Render.
+process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'; // Keep this as a primary attempt
 
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
@@ -879,11 +880,14 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
+        // Determine the executable path. Prioritize env variable, then Puppeteer's default.
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+        console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
+
         // Launch a headless browser
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            // Use PUPPETEER_EXECUTABLE_PATH from environment variables
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, 
+            executablePath: executablePath, 
             args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
         });
         const page = await browser.newPage();
