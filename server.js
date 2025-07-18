@@ -6,8 +6,13 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
-// NEW: Tell Puppeteer not to download Chromium
+
+// NEW: Tell Puppeteer not to download Chromium (already present)
 process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+// NEW: Specify the path to the Chromium executable for Render.com
+// This path is common for Render's environment when using Puppeteer.
+process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
 // Add this very early log to confirm server startup and logging
@@ -764,6 +769,7 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         // 3. Set the 'is_default' flag to 1 for the selected address
         await conn.execute(
             `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
+
             [addressId]
         );
 
@@ -873,6 +879,8 @@ async function generatePdfFromHtml(htmlContent) {
         // Launch a headless browser
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
+            // Use PUPPETEER_EXECUTABLE_PATH from environment variables
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, 
             args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
         });
         const page = await browser.newPage();
