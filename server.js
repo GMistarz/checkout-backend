@@ -6,6 +6,8 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
+// NEW: Tell Puppeteer not to download Chromium
+process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
 // Add this very early log to confirm server startup and logging
