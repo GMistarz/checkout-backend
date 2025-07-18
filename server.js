@@ -14,10 +14,8 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 // Apply the stealth plugin to puppeteer
 puppeteer.use(StealthPlugin());
 
-// Removed: process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-// This line is removed so that Puppeteer will download Chromium during npm install.
-// Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-// This should now be handled by Puppeteer's auto-discovery or a Render-set env var.
+// Removed: process.env.PUPPETEER_EXECUTABLE_PATH assignment from here.
+// The executablePath will now be explicitly passed to puppeteer.launch() below.
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -75,7 +73,7 @@ const sessionStore = new MySQLStore(sessionStoreOptions);
 const allowedOrigins = [
   "https://www.chicagostainless.com",
   "https://checkout-backend-jvyx.onrender.com",
-  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
+  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r766z-h775241406.scf.usercontent.goog"
 ];
 
 // --- CORS Configuration ---
@@ -883,18 +881,14 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Puppeteer will now automatically try to find the downloaded browser
-        // or use an executable path if it's set as an environment variable by Render.
-        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+        // Explicitly set the executablePath to the system-installed Chromium on Render.com
+        const executablePath = '/usr/bin/chromium-browser'; 
         console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
-        // NEW LOG: Explicitly log the resolved executable path
-        console.log(`Puppeteer Resolved Executable Path: ${executablePath}`);
-
 
         // Launch a headless browser
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            executablePath: executablePath, 
+            executablePath: executablePath, // Use the explicitly defined executablePath
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
