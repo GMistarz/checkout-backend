@@ -7,14 +7,17 @@ const mysql = require("mysql2/promise"); // Ensure you're using the promise vers
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-// NEW: Tell Puppeteer not to download Chromium (already present)
-process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-// UPDATED: Specify the path to the Chromium executable for Render.com.
-// We'll try a common Render path, and then let Puppeteer try its default if that fails.
-// It's crucial that one of these paths points to a valid Chromium installation on Render.
-process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'; // Keep this as a primary attempt
+// NEW: Import puppeteer-extra and the stealth plugin
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 
-const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
+// Apply the stealth plugin to puppeteer
+puppeteer.use(StealthPlugin());
+
+// Tell Puppeteer not to download Chromium during npm install (already present)
+process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+// Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+// This should now be set as an environment variable directly on Render.com
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -881,6 +884,8 @@ async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
         // Determine the executable path. Prioritize env variable, then Puppeteer's default.
+        // If PUPPETEER_EXECUTABLE_PATH is set as an env var on Render, it will be used.
+        // Otherwise, puppeteer.executablePath() will try to find a compatible browser.
         const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
         console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
 
@@ -888,7 +893,7 @@ async function generatePdfFromHtml(htmlContent) {
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
             executablePath: executablePath, 
-            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
 
@@ -983,7 +988,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
                 <p>Hello,</p>
-                <p>A new order has been submitted through the checkout page.</p>
+                <p>A new order has been submitted through the www.ChicgoStainless.com checkout page.</p>
                 <p><strong>Order ID:</strong> ${orderId}</p>
                 <p><strong>Customer Email:</strong> ${userEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
