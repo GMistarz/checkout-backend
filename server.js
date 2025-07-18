@@ -9,9 +9,9 @@ const nodemailer = require("nodemailer");
 
 // NEW: Tell Puppeteer not to download Chromium (already present)
 process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-// NEW: Specify the path to the Chromium executable for Render.com
-// This path is common for Render's environment when using Puppeteer.
-process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
+// UPDATED: Specify the path to the Chromium executable for Render.com
+// Trying a common alternative path for Chromium on Render.com.
+process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
 
 const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
@@ -131,6 +131,10 @@ const transporter = nodemailer.createTransport({
         rejectUnauthorized: false
     }
 });
+
+// NEW: Log Nodemailer configuration details (excluding password for security)
+console.log(`Nodemailer Config: Host=${process.env.SMTP_HOST}, Port=${process.env.SMTP_PORT}, Secure=${process.env.SMTP_SECURE}, User=${process.env.EMAIL_USER}`);
+
 
 // --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
@@ -769,7 +773,6 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         // 3. Set the 'is_default' flag to 1 for the selected address
         await conn.execute(
             `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
-
             [addressId]
         );
 
