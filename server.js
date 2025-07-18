@@ -988,7 +988,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
                 <p>Hello,</p>
-                <p>A new order has been submitted through the checkout page.</p>
+                <p>A new order has been submitted through the checkout page.</p> 
                 <p><strong>Order ID:</strong> ${orderId}</p>
                 <p><strong>Customer Email:</strong> ${userEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
