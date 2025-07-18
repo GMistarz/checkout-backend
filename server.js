@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables for emailing
+requirerequire('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -14,10 +14,10 @@ const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 // Apply the stealth plugin to puppeteer
 puppeteer.use(StealthPlugin());
 
-// Tell Puppeteer not to download Chromium during npm install (already present)
-process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+// Removed: process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+// This line is removed so that Puppeteer will download Chromium during npm install.
 // Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-// This should now be set as an environment variable directly on Render.com
+// This should now be handled by Puppeteer's auto-discovery or a Render-set env var.
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -694,7 +694,7 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { 
 });
 
 app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
-    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; // Added company_name
+    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; 
     
     if (!companyId || !name || !address1 || !city || !state || !zip) { // 'name' is now 'Contact Name'
         return res.status(400).json({ error: "Missing required fields (Company ID, Contact Name, Address, City, State, Zip)." });
@@ -726,7 +726,7 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use aut
 
 app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
-    const { name, company_name, address1, city, state, zip, country } = req.body; // Added company_name
+    const { name, company_name, address1, city, state, zip, country } = req.body; 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
@@ -883,11 +883,13 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Determine the executable path. Prioritize env variable, then Puppeteer's default.
-        // If PUPPETEER_EXECUTABLE_PATH is set as an env var on Render, it will be used.
-        // Otherwise, puppeteer.executablePath() will try to find a compatible browser.
+        // Puppeteer will now automatically try to find the downloaded browser
+        // or use an executable path if it's set as an environment variable by Render.
         const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
         console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
+        // NEW LOG: Explicitly log the resolved executable path
+        console.log(`Puppeteer Resolved Executable Path: ${executablePath}`);
+
 
         // Launch a headless browser
         browser = await puppeteer.launch({
@@ -988,7 +990,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
                 <p>Hello,</p>
-                <p>A new order has been submitted through the checkout page.</p>
+                <p>A new order has been submitted through the www.ChicagoStainless.com checkout page.</p>
                 <p><strong>Order ID:</strong> ${orderId}</p>
                 <p><strong>Customer Email:</strong> ${userEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
