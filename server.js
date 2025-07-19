@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables for emailing
+requirerequire('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -7,7 +7,8 @@ const mysql = require("mysql2/promise"); // Ensure you're using the promise vers
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-// Removed: puppeteer-extra and StealthPlugin imports
+// NEW: Tell Puppeteer not to download Chromium
+process.env.PUPPETEER_SKIP_DOWNLOAD = 'true'; 
 const puppeteer = require('puppeteer'); // Using the standard puppeteer package
 
 // Add this very early log to confirm server startup and logging
@@ -189,6 +190,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
     // For the submit-order route, we assume the user's companyId is implicitly linked to the order.
     // We don't need a requestedCompanyId from params/body for this specific route's authorization,
     // but we ensure the user is authenticated and has a companyId.
+
     if (req.path === '/submit-order' && !userCompanyId) {
         return res.status(403).json({ error: "Forbidden: User not associated with a company." });
     }
@@ -875,7 +877,7 @@ async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
         // Use PUPPETEER_EXECUTABLE_PATH from environment variables, with a common fallback
-        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
         console.log(`Puppeteer: Attempting to launch browser with executablePath: ${executablePath}`);
         
         browser = await puppeteer.launch({
@@ -1024,4 +1026,4 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
-}); 
+});
