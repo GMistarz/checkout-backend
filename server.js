@@ -71,8 +71,8 @@ const sessionStore = new MySQLStore({
     endConnectionOnClose: true,
 }, pool); // Pass the pool directly
 
-// Determine frontend URL for CORS - EXPLICITLY SET FOR DEBUGGING
-const frontendUrl = 'https://chicagostainless.com'; // Explicitly set for testing
+// Determine frontend URL for CORS - UPDATED TO INCLUDE www.
+const frontendUrl = process.env.FRONTEND_URL || 'https://www.chicagostainless.com'; // Fallback includes www.
 console.log(`CORS configured for origin: ${frontendUrl}`);
 
 // Middleware
