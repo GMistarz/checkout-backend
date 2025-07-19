@@ -7,9 +7,17 @@ const mysql = require("mysql2/promise"); // Ensure you're using the promise vers
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-// NEW: Tell Puppeteer not to download Chromium
-process.env.PUPPETEER_SKIP_DOWNLOAD = 'true'; 
-const puppeteer = require('puppeteer'); // Using the standard puppeteer package
+// NEW: Import puppeteer-extra and the stealth plugin
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+// Apply the stealth plugin to puppeteer
+puppeteer.use(StealthPlugin());
+
+// Removed: process.env.PUPPETEER_SKIP_DOWNLOAD = 'true';
+// This line is removed so that Puppeteer will download Chromium during npm install.
+// Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+// This should now be handled by Puppeteer's auto-discovery or a Render-set env var.
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -190,7 +198,6 @@ const authorizeCompanyAccess = async (req, res, next) => {
     // For the submit-order route, we assume the user's companyId is implicitly linked to the order.
     // We don't need a requestedCompanyId from params/body for this specific route's authorization,
     // but we ensure the user is authenticated and has a companyId.
-
     if (req.path === '/submit-order' && !userCompanyId) {
         return res.status(403).json({ error: "Forbidden: User not associated with a company." });
     }
@@ -876,13 +883,11 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Use PUPPETEER_EXECUTABLE_PATH from environment variables, with a common fallback
-        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable';
-        console.log(`Puppeteer: Attempting to launch browser with executablePath: ${executablePath}`);
+        // Removed executablePath: executablePath, to let Puppeteer find its own downloaded browser
+        console.log(`Puppeteer: Attempting to launch browser (auto-detected path).`);
         
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            executablePath: executablePath, // Explicitly set path from env or fallback
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote']
         });
         const page = await browser.newPage();
