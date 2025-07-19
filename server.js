@@ -584,7 +584,10 @@ app.get("/test-company-details", async (req, res) => {
     console.error("Error in /test-company-details route:", err);
     res.status(500).json({ error: "Failed to retrieve test company details." });
   } finally {
-    if (conn) conn.end();
+    if (conn) {
+      conn.end();
+      console.log("[Test Company Details] Database connection closed.");
+    }
   }
 });
 
@@ -807,27 +810,19 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
 });
 
 // Helper function to generate HTML for the order email
-function generateOrderHtmlEmail(orderData, companyDiscount) { // Added companyDiscount parameter
-    let itemsHtml = orderData.items.map(item => {
-        const discountFactor = (100 - companyDiscount) / 100;
-        const netPrice = item.price * discountFactor;
-        const lineTotal = item.quantity * netPrice;
-        return `
-            <tr>
-                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
-                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
-                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${netPrice.toFixed(2)}</td>
-                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${lineTotal.toFixed(2)}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
-            </tr>
-        `;
-    }).join('');
+function generateOrderHtmlEmail(orderData) { // Reverted to original signature without companyDiscount
+    let itemsHtml = orderData.items.map(item => `
+        <tr>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
+        </tr>
+    `).join('');
 
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalListPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const totalNetPrice = orderData.items.reduce((sum, item) => sum + (item.quantity * (item.price * ((100 - companyDiscount) / 100))), 0);
-
+    const totalPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     return `
         <!DOCTYPE html>
@@ -880,9 +875,8 @@ function generateOrderHtmlEmail(orderData, companyDiscount) { // Added companyDi
                     <tr>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">List Price</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Net Price (-${companyDiscount}%)</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Line Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
                     </tr>
                 </thead>
@@ -891,8 +885,7 @@ function generateOrderHtmlEmail(orderData, companyDiscount) { // Added companyDi
                 </tbody>
             </table>
             <p style="font-weight: bold; text-align: right;">Item Count: ${totalQuantity}</p>
-            <p style="font-weight: bold; text-align: right;">Total List Price: $${totalListPrice.toFixed(2)}</p>
-            <p style="font-weight: bold; text-align: right;">Total Net Price: $${totalNetPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right;">Total Price: $${totalPrice.toFixed(2)}</p>
 
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
@@ -982,29 +975,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction(); // Start a transaction
 
-        // Fetch company discount
-        let companyDiscount = 0;
-        if (companyId) {
-            const [companyRows] = await conn.execute("SELECT discount FROM companies WHERE id = ?", [companyId]);
-            if (companyRows.length > 0) {
-                companyDiscount = companyRows[0].discount;
-            }
-        }
-        const discountFactor = (100 - companyDiscount) / 100;
-
-        // Calculate total amount with discount applied to each item's net price
-        let totalAmount = 0;
-        items.forEach(item => {
-            const netPrice = item.price * discountFactor;
-            totalAmount += item.quantity * netPrice;
-        });
-
-        // Insert into orders table, matching the provided schema exactly
-        // FIX: Moved 'date' column to the end and 'NOW()' as its value to match parameter count
+        // Reverted to original INSERT statement for 'orders' table
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, user_id, company_id, shipping_address_id, attn, tag, total_amount, discount_applied, date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items), userId, companyId, shippingAddressId, attn || null, tag || null, totalAmount, companyDiscount]
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
@@ -1024,7 +999,8 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount, items,
             terms: req.body.terms // Ensure terms are passed if available
         };
-        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail, companyDiscount); // Pass companyDiscount
+        // Removed companyDiscount parameter from generateOrderHtmlEmail call
+        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail); 
 
         let pdfBuffer;
         try {
