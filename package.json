@@ -19,8 +19,8 @@
     "mysql2": "^3.14.1",
     "nodemailer": "^7.0.5",
     "puppeteer": "^24.12.1",
-    "puppeteer-extra": "^11.0.0",           <-- NEW LINE
-    "puppeteer-extra-plugin-stealth": "^2.11.0"  <-- NEW LINE
+    "puppeteer-extra": "^11.0.0",
+    "puppeteer-extra-plugin-stealth": "^2.11.0"
   },
   "description": ""
 }
