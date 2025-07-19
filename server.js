@@ -7,12 +7,8 @@ const mysql = require("mysql2/promise"); // Ensure you're using the promise vers
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-// NEW: Import puppeteer-extra and the stealth plugin
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-// Apply the stealth plugin to puppeteer
-puppeteer.use(StealthPlugin());
+// Removed: puppeteer-extra and StealthPlugin imports
+const puppeteer = require('puppeteer'); // Using the standard puppeteer package
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -878,14 +874,14 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Removed: const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-        // Removed: console.log(`Puppeteer: Attempting to launch browser with executablePath: ${executablePath}`);
+        // Use PUPPETEER_EXECUTABLE_PATH from environment variables, with a common fallback
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+        console.log(`Puppeteer: Attempting to launch browser with executablePath: ${executablePath}`);
         
-        // Launch a headless browser, allowing Puppeteer to auto-discover or download Chromium
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            // Removed: executablePath: executablePath, // Explicitly set path
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
+            executablePath: executablePath, // Explicitly set path from env or fallback
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote']
         });
         const page = await browser.newPage();
 
