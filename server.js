@@ -73,7 +73,7 @@ const sessionStore = new MySQLStore({
 
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:8080', // Replace with your frontend URL
+    origin: process.env.FRONTEND_URL || 'http://localhost:8080', // THIS LINE IS UPDATED
     credentials: true
 }));
 app.use(express.json());
@@ -429,7 +429,7 @@ app.post("/edit-company", isAuthenticated, isAdmin, async (req, res) => {
         }
 
         const [result] = await conn.execute(
-            'UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, ?, country = ?, terms = ?, logo = ?, discount = ?, notes = ? WHERE id = ?',
+            'UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ?, discount = ?, notes = ? WHERE id = ?',
             [name, address1, city, state, zip, country, terms, logo, discount, notes || '', id]
         );
 
@@ -1021,7 +1021,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
             await conn.rollback(); // Rollback on error
         }
         // Log the full error object for detailed debugging on the backend server
-        console.error("Error submitting order (Backend):", err); 
+        console.error("Error submitting order (Backend):", err);
         res.status(500).json({ error: "Failed to submit order due to server error." });
     } finally {
         if (conn) conn.end();
@@ -1032,7 +1032,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
-  res.redirect("/admin-dashboard.html"); 
+  res.redirect("/admin-dashboard.html");
 });
 
 app.listen(PORT, () => {
