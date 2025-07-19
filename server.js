@@ -10,14 +10,11 @@ const nodemailer = require("nodemailer");
 // NEW: Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+// NEW: Import @sparticuz/chromium for Render compatibility
+const chromium = require('@sparticuz/chromium');
 
 // Apply the stealth plugin to puppeteer
 puppeteer.use(StealthPlugin());
-
-// Removed: process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
-// This line is removed so that Puppeteer will download Chromium during npm install.
-// Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
-// This should now be handled by Puppeteer's auto-discovery or a Render-set env var.
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -386,7 +383,7 @@ app.post("/register-company", async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
       `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Re-added notes column
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, ''] // Re-added notes value (empty string)
     );
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId }); // Added id to response
@@ -883,19 +880,12 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Puppeteer will now automatically try to find the downloaded browser
-        // or use an executable path if it's set as an environment variable by Render.
-        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
-        console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
-        // NEW LOG: Explicitly log the resolved executable path
-        console.log(`Puppeteer Resolved Executable Path: ${executablePath}`);
-
-
-        // Launch a headless browser
+        // Use @sparticuz/chromium for executable path and args
         browser = await puppeteer.launch({
-            headless: true, // Set to 'true' for production environments
-            executablePath: executablePath, 
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
+            args: [...chromium.args, '--disable-gpu', '--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox'], // Include necessary args for Render
+            executablePath: await chromium.executablePath(), // Get the path from chromium package
+            headless: chromium.headless, // Use recommended headless setting
+            ignoreHTTPSErrors: true // Sometimes useful for local dev or specific setups
         });
         const page = await browser.newPage();
 
@@ -915,6 +905,7 @@ async function generatePdfFromHtml(htmlContent) {
                 left: '0.5in'
             }
         });
+        console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`); // Log PDF buffer size
         return pdfBuffer;
     } catch (error) {
         console.error("Error generating PDF:", error);
