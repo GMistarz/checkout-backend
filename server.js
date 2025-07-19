@@ -1,4 +1,3 @@
-require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -6,15 +5,7 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
-
-// NEW: Import puppeteer-extra, puppeteer-core, and the stealth plugin
-const puppeteerExtra = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const puppeteerCore = require('puppeteer-core'); // Import puppeteer-core
-const chromium = require('@sparticuz/chromium'); // Import @sparticuz/chromium
-
-// Apply the stealth plugin to puppeteer-extra
-puppeteerExtra.use(StealthPlugin());
+const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -38,833 +29,839 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Log the port being used
-console.log(`Application will attempt to listen on port ${PORT}`);
+console.log(`Application will attempt to listen on port: ${PORT}`);
 
-// MySQL Connection Pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_NAME || 'checkout_db',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
 
-// Test DB connection
-pool.getConnection()
-    .then(connection => {
-        console.log("Successfully connected to the database!");
-        connection.release(); // Release the connection immediately
-    })
-    .catch(err => {
-        console.error("Failed to connect to the database:", err);
-        // Optionally, exit the process if DB connection is critical for startup
-        // process.exit(1);
-    });
+// Separate database configuration for direct MySQL2 connections
+const dbConnectionConfig = {
+  host: "192.254.232.38",
+  user: "gmistarz_cse",
+  password: "Csec@1280",
+  database: "gmistarz_cse",
+  // No session-specific options here
+  // port: 3306, // Uncomment if your MySQL server is not on the default port
+  connectTimeout: 10000 // Add a 10-second connection timeout (10000 ms)
+};
 
-// Session store configuration
-const sessionStore = new MySQLStore({
-    clearExpired: true,
-    checkExpirationInterval: 900000, // How frequently to check for expired sessions (15 minutes)
-    expiration: 86400000, // The maximum age of a session (1 day)
-    endConnectionOnClose: true,
-}, pool); // Pass the pool directly
+// Configuration for the express-mysql-session store
+const sessionStoreOptions = {
+  host: dbConnectionConfig.host,
+  user: dbConnectionConfig.user,
+  password: dbConnectionConfig.password,
+  database: dbConnectionConfig.database,
+  clearExpired: true,              // Automatically clear expired sessions
+  checkExpirationInterval: 900000, // 15 minutes
+  expiration: 86400000,            // 24 hours
+  createDatabaseTable: true,       // Whether to create the 'sessions' table
+  connectionLimit: 1               // Limit connections for the session store
+};
 
-// Determine frontend URL for CORS - UPDATED TO INCLUDE www.
-const frontendUrl = process.env.FRONTEND_URL || 'https://www.chicagostainless.com'; // Fallback includes www.
-console.log(`CORS configured for origin: ${frontendUrl}`);
+// NEW: Configure the session store instance
+const sessionStore = new MySQLStore(sessionStoreOptions);
 
-// Middleware
-app.use(cors({
-    origin: frontendUrl,
-    credentials: true
-}));
+
+const allowedOrigins = [
+  "https://www.chicagostainless.com",
+  "https://checkout-backend-jvyx.onrender.com",
+  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
+];
+
+// --- CORS Configuration ---
+const corsOptions = {
+  origin: function (origin, callback) {
+    console.log(`[CORS Check] Request Origin: ${origin}`); // Log the incoming origin
+    if (!origin || allowedOrigins.includes(origin)) {
+      console.log(`[CORS Check] Origin ${origin} ALLOWED.`);
+      callback(null, true);
+    } else {
+      console.error(`[CORS Check] Origin ${origin} NOT ALLOWED.`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+  // Explicitly allow headers that might be sent in preflight
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // Explicitly list allowed methods
+};
+
+app.use(cors(corsOptions));
+// Removed: app.options('*', cors(corsOptions)); // This line was causing the TypeError
+
+// --- Session & Body Parsing ---
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public' directory
-
-const isProduction = process.env.NODE_ENV === 'production';
-console.log(`Node Environment: ${process.env.NODE_ENV}, Secure cookie flag: ${isProduction}`);
-console.log(`Session cookie SameSite: 'None'`);
+app.set("trust proxy", 1); // Essential for 'secure: true' cookies when behind a proxy/load balancer like Render
 
 app.use(session({
-    key: 'session_cookie_name', // Cookie name
-    secret: process.env.SESSION_SECRET || 'supersecretkey', // Secret for signing the session ID cookie
-    store: sessionStore,
-    resave: false, // Don't save session if unmodified
-    saveUninitialized: false, // Don't create session until something stored
-    cookie: {
-        maxAge: 86400000, // 1 day
-        httpOnly: true, // Prevent client-side JS from reading the cookie
-        secure: isProduction, // Use secure cookies in production
-        sameSite: 'None' // IMPORTANT: Changed from 'Lax' to 'None' for cross-site cookie sending
-    }
+  secret: "secret-key", // Replace with a strong, unique secret key in production
+  resave: false,
+  saveUninitialized: false,
+  store: sessionStore, // <-- THIS IS THE CRUCIAL CHANGE for persistent sessions
+  cookie: {
+    sameSite: "none",  // Required for cross-site cookies to be sent from different origins
+    secure: true,      // Required for sameSite: "none" and highly recommended for production (Render provides HTTPS)
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
 }));
 
-// Nodemailer transporter setup
+// --- Nodemailer Transporter Configuration ---
+// IMPORTANT: Replace with your actual email service credentials or environment variables.
+// Note: For some SMTP servers, the 'from' address in mailOptions must match or be an alias
+// of the 'user' in the auth object below. If you encounter issues, ensure your SMTP
+// provider allows sending from arbitrary 'from' addresses, or consider using your
+// authenticated email address as the 'from' address in mailOptions.
 const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_SECURE === 'true', // Use 'true' for 465, 'false' for 587
+    host: "smtp.your-email-service.com", // e.g., "smtp.gmail.com" for Gmail, "smtp.mailgun.org" for Mailgun
+    port: 587, // Common ports: 587 (TLS), 465 (SSL)
+    secure: false, // Use 'true' if port is 465 (SSL), 'false' for other ports (TLS)
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: "your-email@example.com", // Your sending email address (this account must be authenticated)
+        pass: "your-email-password" // Your email password or app-specific password
     },
-});
-
-// Verify transporter configuration
-transporter.verify(function (error, success) {
-    if (error) {
-        console.error("Nodemailer transporter verification failed:", error);
-    } else {
-        console.log("Nodemailer transporter is ready to send emails");
+    tls: {
+        // Do not fail on invalid certs
+        rejectUnauthorized: false
     }
 });
+
+// --- Helper Middleware for Admin Check ---
+const requireAdmin = (req, res, next) => {
+    // console.log("Checking session for admin role:", req.session.user); // Optional: for more debugging
+    if (!req.session.user || req.session.user.role !== "admin") {
+        return res.status(403).json({ error: "Forbidden: Admin access required" }); // More specific message
+    }
+    next();
+};
+
+// --- NEW: Helper Middleware for Authenticated User Check ---
+const requireAuth = (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+    next();
+};
+
+// --- NEW: Helper Middleware for Company Access Authorization ---
+// This middleware checks if the user is authenticated and if their company_id
+// matches the company_id being accessed in the request.
+// Admins can access any company's data.
+const authorizeCompanyAccess = async (req, res, next) => {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+
+    // Allow admins to access any company's data
+    if (req.session.user.role === "admin") {
+        return next();
+    }
+
+    const userCompanyId = req.session.user.companyId;
+
+    // Determine the companyId from the request based on route
+    let requestedCompanyId = null;
+    if (req.params.companyId) { // For routes like /api/shipto/:companyId
+        requestedCompanyId = parseInt(req.params.companyId, 10);
+    } else if (req.body.companyId) { // For POST routes like /api/shipto (add new)
+        requestedCompanyId = parseInt(req.body.companyId, 10);
+    } else if (req.params.addressId) { // For PUT/DELETE/SET_DEFAULT on /api/shipto/:addressId
+        let conn;
+        try {
+            conn = await mysql.createConnection(dbConnectionConfig);
+            const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
+            if (rows.length > 0) {
+                requestedCompanyId = rows[0].company_id;
+            }
+        } catch (err) {
+            console.error("Error fetching company_id for address:", err);
+            return res.status(500).json({ error: "Server error while authorizing company access" });
+        } finally {
+            if (conn) conn.end();
+        }
+    }
+
+    // For the submit-order route, we assume the user's companyId is implicitly linked to the order.
+    // We don't need a requestedCompanyId from params/body for this specific route's authorization,
+    // but we ensure the user is authenticated and has a companyId.
+    if (req.path === '/submit-order' && !userCompanyId) {
+        return res.status(403).json({ error: "Forbidden: User not associated with a company." });
+    }
+
+
+    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
+        // Only apply this check if a specific companyId was requested in the URL/body
+        // and it doesn't match the user's companyId, or if no companyId was found
+        // but the route requires it (e.g., shipto management).
+        // For /submit-order, this block will be skipped unless a companyId param was explicitly passed.
+        if (req.path.startsWith('/api/shipto/') || req.path === '/api/shipto') {
+            return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+        }
+    }
+
+    next();
+};
 
 
 // --- Authentication Routes ---
 
-app.post("/register-company", async (req, res) => {
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+  let conn; // Declare conn outside try-finally to ensure it's accessible for closing
+  console.log(`[Login Route] Attempting login for email: ${email}`);
+  try {
+    console.log("[Login Route] Attempting to create database connection...");
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    console.log("[Login Route] Database connection established.");
+
+    const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
+    console.log(`[Login Route] Query result for user ${email}:`, users);
+
+    const user = users[0];
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      console.log("[Login Route] Invalid credentials.");
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Set user data in session
+    req.session.user = { 
+        id: user.id, 
+        email: user.email, 
+        role: user.role, 
+        companyId: user.company_id,
+        firstName: user.first_name, // Include first name
+        lastName: user.last_name     // Include last name
+    };
+    
+    // Log for debugging on Render
+    console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
+    
+    res.json({ message: "Login successful", role: user.role });
+
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: "Login failed due to server error" });
+  } finally {
+    if (conn) {
+        conn.end(); // Ensure connection is closed
+        console.log("[Login Route] Database connection closed.");
+    }
+  }
+});
+
+app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
+  console.log("[User Profile Route] Route hit.");
+  const { user } = req.session;
+  console.log("[User Profile Route] Session user:", user);
+
+  // The session 'user' object already contains most of the profile data needed.
+  // We can directly send it, or fetch from DB if more fields are needed.
+  // For simplicity, sending directly from session, ensuring it includes first_name and last_name.
+  if (user) {
+      console.log("[User Profile Route] Sending user profile from session.");
+      res.json({
+          email: user.email,
+          role: user.role,
+          company_id: user.companyId,
+          first_name: user.firstName,
+          last_name: user.lastName
+      });
+  } else {
+      // This case should ideally be caught by requireAuth, but as a fallback:
+      console.log("[User Profile Route] User not found in session (should be caught by requireAuth).");
+      res.status(401).json({ error: "Not logged in" });
+  }
+});
+
+// MODIFIED: Moved this route definition to appear BEFORE /user/:userId
+app.get("/user/company-details", requireAuth, async (req, res) => {
+  let userCompanyId = req.session.user.companyId; // Declare with let to allow reassignment
+  console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
+  console.log(`[User Company Details] Type of userCompanyId (before parse): ${typeof userCompanyId}`);
+
+  // Explicitly parse to an integer to ensure type consistency for the SQL query
+  userCompanyId = parseInt(userCompanyId, 10);
+  console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
+
+
+  if (isNaN(userCompanyId) || userCompanyId <= 0) { // Check if parsing resulted in NaN or an invalid ID
+    console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
+    return res.status(404).json({ error: "No company associated with this user." });
+  }
+
+  let conn;
+  try {
+    console.log("[User Company Details] Attempting to create database connection...");
+    conn = await mysql.createConnection(dbConnectionConfig);
+    console.log("[User Company Details] Database connection established.");
+
+    // NEW: Log all companies to verify table visibility
+    const [allCompanies] = await conn.execute("SELECT id, name FROM companies");
+    console.log("[User Company Details] All companies found in DB:", allCompanies);
+
+    console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
+    // Using direct parameter binding for the integer ID
+    const [companies] = await conn.execute(
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      [userCompanyId]
+    );
+    console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
+
+    if (companies.length === 0) {
+      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
+      return res.status(404).json({ error: "Company not found for this user." });
+    }
+    console.log("[User Company Details] Successfully fetched company details:", companies[0]);
+    res.json(companies[0]);
+  } catch (err) {
+    console.error("Error in /user/company-details route:", err); // Log the full error object
+    res.status(500).json({ error: "Failed to retrieve user's company details." });
+  } finally {
+    if (conn) {
+      conn.end();
+      console.log("[User Company Details] Database connection closed.");
+    }
+  }
+});
+
+// NEW: Get single user by ID (for editing) - This route should come AFTER /user/company-details
+app.get("/user/:userId", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
     let conn;
     try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-
-        const { name, address1, city, state, zip, country, terms, logo, discount } = req.body;
-
-        if (!name || !terms) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company name and terms are required." });
-        }
-
-        // Check if company already exists by name (case-insensitive)
-        const [existingCompanies] = await conn.execute(
-            'SELECT id FROM companies WHERE LOWER(name) = LOWER(?)',
-            [name]
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [users] = await conn.execute(
+            "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
+            [userId]
         );
-
-        if (existingCompanies.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "Company with this name already exists." });
+        const user = users[0];
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
         }
-
-        // Insert new company
-        const [companyResult] = await conn.execute(
-            'INSERT INTO companies (name, address1, city, state, zip, country, terms, logo, discount, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, address1, city, state, zip, country, terms, logo, discount, ''] // Initialize notes as empty string
-        );
-        const companyId = companyResult.insertId;
-
-        await conn.commit();
-        res.status(201).json({ message: "Company registered successfully!", companyId: companyId });
-
+        res.json(user);
     } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error registering company:", err);
-        res.status(500).json({ error: "Failed to register company." });
+        console.error("Error fetching user by ID:", err);
+        res.status(500).json({ error: "Failed to retrieve user details" });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-app.get("/company-by-name/:companyName", async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const { companyName } = req.params;
-        const [rows] = await conn.execute(
-            'SELECT id, name, address1, city, state, zip, country, terms, logo, discount, notes FROM companies WHERE LOWER(name) = LOWER(?)',
-            [companyName]
-        );
-        if (rows.length > 0) {
-            res.status(200).json({ exists: true, company: rows[0] });
-        } else {
-            res.status(200).json({ exists: false });
-        }
-    } catch (err) {
-        console.error("Error checking company existence:", err);
-        res.status(500).json({ error: "Failed to check company existence." });
-    } finally {
-        if (conn) conn.release();
+
+app.post("/logout", (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error("Logout failed:", err);
+      return res.status(500).json({ error: "Logout failed" });
     }
+    // Clear the session cookie from the client
+    res.clearCookie("connect.sid", { path: "/", sameSite: "none", secure: true }); // Ensure cookie options match the session setup
+    res.json({ message: "Logged out" });
+  });
+});
+
+// --- NEW: Registration Endpoints ---
+
+app.post("/register-company", async (req, res) => {
+  const { name, address1, city, state, zip, country, terms, logo } = req.body;
+  if (!name || !address1 || !city || !state || !zip) {
+    return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    const [result] = await conn.execute(
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30']
+    );
+    res.status(201).json({ message: "Company registered successfully", companyId: result.insertId });
+  } catch (err) {
+    console.error("Failed to register company:", err);
+    // Check for duplicate entry error (e.g., if company name is unique)
+    if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ error: "Company with this name already exists." });
+    }
+    res.status(500).json({ error: "Failed to register company due to server error" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
 app.post("/register-user", async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
+  const { email, firstName, lastName, phone, password, companyId } = req.body;
+  // Role is hardcoded to 'user' for new registrations from checkout
+  const role = "user"; 
 
-        const { email, firstName, lastName, phone, role, password, companyId } = req.body;
-
-        if (!email || !password || !companyId) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Email, password, and company ID are required." });
-        }
-
-        // Check if user with this email already exists
-        const [existingUsersByEmail] = await conn.execute(
-            'SELECT id FROM users WHERE LOWER(email) = LOWER(?)',
-            [email]
-        );
-
-        if (existingUsersByEmail.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "User with this email already exists." });
-        }
-
-        // Check if user with same first_name and last_name exists for this company
-        const [existingUsersByName] = await conn.execute(
-            'SELECT id FROM users WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND company_id = ?',
-            [firstName, lastName, companyId]
-        );
-
-        if (existingUsersByName.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "User Name Already Exists" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const [userResult] = await conn.execute(
-            'INSERT INTO users (email, first_name, last_name, phone, role, password, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [email, firstName, lastName, phone, role, hashedPassword, companyId]
-        );
-        const userId = userResult.insertId;
-
-        await conn.commit();
-        res.status(201).json({ message: "User registered successfully!", userId: userId });
-
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error registering user:", err);
-        res.status(500).json({ error: "Failed to register user." });
-    } finally {
-        if (conn) conn.release();
+  if (!email || !firstName || !lastName || !password || !companyId) {
+    return res.status(400).json({ error: "Email, first name, last name, password, and company ID are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    // Check if user with this email already exists
+    const [existingUsersByEmail] = await conn.execute("SELECT id FROM users WHERE email = ?", [email]);
+    if (existingUsersByEmail.length > 0) {
+      return res.status(409).json({ error: "User with this email already exists." });
     }
-});
 
-
-app.post("/login", async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const { email, password } = req.body;
-
-        const [rows] = await conn.execute('SELECT * FROM users WHERE email = ?', [email]);
-        const user = rows[0];
-
-        if (!user || !(await bcrypt.compare(password, user.password))) {
-            return res.status(401).json({ error: "Invalid credentials" });
-        }
-
-        req.session.userId = user.id;
-        req.session.role = user.role;
-        req.session.companyId = user.company_id; // Store companyId in session
-
-        // NEW: Log session cookie details after it's set
-        console.log("Server-side session cookie attributes after login:", req.session.cookie);
-
-        res.status(200).json({ message: "Logged in successfully", user: { id: user.id, email: user.email, role: user.role, company_id: user.company_id } });
-    } catch (err) {
-        console.error("Login error:", err);
-        res.status(500).json({ error: "An error occurred during login." });
-    } finally {
-        if (conn) conn.release();
+    // NEW: Check if user with same first_name and last_name exists within the same company
+    const [existingUsersByName] = await conn.execute(
+        "SELECT id FROM users WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND company_id = ?",
+        [firstName, lastName, companyId]
+    );
+    if (existingUsersByName.length > 0) {
+        return res.status(409).json({ error: "User Name Already Exists" }); // Specific message for frontend
     }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await conn.execute(
+      `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
+    );
+    res.status(201).json({ message: "User registered successfully" });
+  } catch (err) {
+    console.error("Failed to register user:", err);
+    res.status(500).json({ error: "Failed to register user due to server error" });
+  } finally {
+    if (conn) conn.end();
+  }
 });
 
-app.post("/logout", (req, res) => {
-    req.session.destroy(err => {
-        if (err) {
-            console.error("Logout error:", err);
-            return res.status(500).json({ error: "Failed to log out" });
-        }
-        res.clearCookie('session_cookie_name'); // Clear the session cookie
-        res.status(200).json({ message: "Logged out successfully" });
-    });
-});
-
-// Middleware to check if user is authenticated
-const isAuthenticated = (req, res, next) => {
-    if (req.session.userId) {
-        next();
+// NEW: Endpoint to get company by name (case-insensitive)
+app.get("/company-by-name/:name", async (req, res) => {
+  const companyName = req.params.name;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    const [companies] = await conn.execute(
+      "SELECT id, name FROM companies WHERE LOWER(name) = LOWER(?)", // Case-insensitive comparison
+      [companyName]
+    );
+    if (companies.length > 0) {
+      res.json({ exists: true, company: companies[0] });
     } else {
-        res.status(401).json({ error: "Unauthorized" });
+      res.json({ exists: false });
     }
-};
+  } catch (err) {
+    console.error("Error checking company by name:", err);
+    res.status(500).json({ error: "Server error checking company existence" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
 
-// Middleware to check if user is an admin
-const isAdmin = (req, res, next) => {
-    if (req.session.role === 'admin') {
-        next();
+
+// --- Company Routes (Admin Only) ---
+// These remain requireAdmin as they are for overall company management
+app.get("/companies", requireAdmin, async (req, res) => {
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const [companies] = await conn.execute("SELECT * FROM companies");
+    res.json(companies);
+  } catch (err) {
+    console.error("Failed to retrieve companies:", err);
+    res.status(500).json({ error: "Failed to retrieve companies" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+// Updated: Removed address2 from edit-company route
+app.post("/edit-company", requireAdmin, async (req, res) => {
+  const { id, name, address1, city, state, zip, country, terms, logo } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute(
+      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
+      [name, address1, city, state, zip, country, terms, logo, id]
+    );
+    res.json({ message: "Company updated" });
+  } catch (err) {
+    console.error("Failed to update company:", err);
+    res.status(500).json({ error: "Failed to update company" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+app.post('/add-company', requireAdmin, async (req, res) => {
+  const {
+    name, logo, address1, city, state, zip, country, terms
+  } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute(`
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms]);
+    res.status(200).json({ message: "Company created" });
+  } catch (err) {
+    console.error("Failed to create company:", err);
+    res.status(500).json({ error: "Failed to create company" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+app.post("/delete-company", requireAdmin, async (req, res) => {
+  const { id } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute("DELETE FROM companies WHERE id = ?", [id]); 
+    res.json({ message: "Company deleted" });
+  } catch (err) {
+    console.error("Failed to delete company:", err);
+    res.status(500).json({ error: "Failed to delete company" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+// NEW: Temporary route to test company details retrieval by hardcoding ID 1
+app.get("/test-company-details", async (req, res) => {
+  const testCompanyId = 1; // Hardcode company ID 1 for testing
+  console.log(`[Test Company Details] Attempting to fetch details for hardcoded ID: ${testCompanyId}`);
+
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig);
+    console.log("[Test Company Details] Database connection established.");
+
+    const [companies] = await conn.execute(
+      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      [testCompanyId]
+    );
+    console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
+
+    if (companies.length === 0) {
+      console.error(`[Test Company Details] Company not found in DB for hardcoded ID: ${testCompanyId}. Query returned no rows.`);
+      return res.status(404).json({ error: `Test company with ID ${testCompanyId} not found.` });
+    }
+    console.log("[Test Company Details] Successfully fetched company details:", companies[0]);
+    res.json(companies[0]);
+  } catch (err) {
+    console.error("Error in /test-company-details route:", err);
+    res.status(500).json({ error: "Failed to retrieve test company details." });
+  } finally {
+    if (conn) {
+      conn.end();
+      console.log("[Test Company Details] Database connection closed.");
+    }
+  }
+});
+
+
+app.post("/add-user", async (req, res) => {
+  const { email, firstName, lastName, phone, role, password, companyId } = req.body;
+  if (!email || !companyId || !password) {
+    return res.status(400).json({ error: "Email, password, and companyId are required." });
+  }
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await conn.execute(
+      `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone, role, hashedPassword, companyId]
+    );
+    res.json({ message: "User added" });
+  }
+   catch (err) {
+    console.error("Failed to add user:", err);
+    res.status(500).json({ error: "Failed to add user" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
+
+app.post("/edit-user", requireAdmin, async (req, res) => {
+  const { id, email, firstName, lastName, phone, role, password } = req.body;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    if (password) {
+      const hashedPassword = await bcrypt.hash(password, 10);
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, hashedPassword, id]
+      );
     } else {
-        res.status(403).json({ error: "Forbidden: Admins only" });
+      await conn.execute(
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
+        [email, firstName, lastName, phone, role, id]
+      );
     }
-};
+    res.json({ message: "User updated" });
+  } catch (err) {
+    console.error("Failed to update user:", err);
+    res.status(500).json({ error: "Failed to update user" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
 
-// Middleware to authorize access to company-specific data
-const authorizeCompanyAccess = async (req, res, next) => {
-    const requestedCompanyId = parseInt(req.params.companyId || req.body.companyId, 10);
-    if (isNaN(requestedCompanyId)) {
-        return res.status(400).json({ error: "Invalid company ID provided." });
-    }
+app.post("/delete-user", requireAdmin, async (req, res) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "Missing user ID" });
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    await conn.execute("DELETE FROM users WHERE id = ?", [id]);
+    res.json({ message: "User deleted" });
+  } catch (err) {
+    console.error("Delete user error:", err);
+    res.status(500).json({ error: "Failed to delete user" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
 
-    if (req.session.role === 'admin') {
-        // Admins can access any company's data
-        next();
-    } else if (req.session.role === 'user' && req.session.companyId === requestedCompanyId) {
-        // Regular users can only access data for their own company
-        next();
-    } else {
-        res.status(403).json({ error: "Forbidden: You do not have access to this company's data." });
-    }
-};
+app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
+  const { companyId } = req.params;
+  let conn;
+  try {
+    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    // Select only necessary fields for display
+    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role FROM users WHERE company_id = ?", [companyId]);
+    res.json(users);
+  } catch (err) {
+    console.error("Failed to retrieve users:", err);
+    res.status(500).json({ error: "Failed to retrieve users" });
+  } finally {
+    if (conn) conn.end();
+  }
+});
 
-// --- User Profile Endpoint ---
-app.get("/user-profile", isAuthenticated, async (req, res) => {
+// --- Ship To Addresses Routes ---
+
+// Get all ship-to addresses for a company
+app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+    const { companyId } = req.params;
     let conn;
     try {
-        conn = await pool.getConnection();
-        const [rows] = await conn.execute('SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?', [req.session.userId]);
-        if (rows.length > 0) {
-            res.status(200).json(rows[0]);
-        } else {
-            res.status(404).json({ error: "User not found" });
-        }
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // Include company_name in the select query
+        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ?", [companyId]);
+        res.json(addresses);
     } catch (err) {
-        console.error("Error fetching user profile:", err);
-        res.status(500).json({ error: "Failed to fetch user profile." });
+        console.error("Error fetching ship-to addresses:", err);
+        res.status(500).json({ error: "Failed to retrieve ship-to addresses" });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-// NEW: Endpoint to get company details for the logged-in user
-app.get("/user/company-details", isAuthenticated, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        if (!req.session.companyId) {
-            return res.status(404).json({ error: "User is not associated with a company." });
-        }
-        const [rows] = await conn.execute('SELECT id, name, address1, city, state, zip, country, terms, logo, discount, notes FROM companies WHERE id = ?', [req.session.companyId]);
-        if (rows.length > 0) {
-            res.status(200).json(rows[0]);
-        } else {
-            res.status(404).json({ error: "Company not found for the user." });
-        }
-    } catch (err) {
-        console.error("Error fetching user's company details:", err);
-        res.status(500).json({ error: "Failed to fetch user's company details." });
-    } finally {
-        if (conn) conn.release();
+app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; // Added company_name
+    
+    if (!companyId || !name || !address1 || !city || !state || !zip) { // 'name' is now 'Contact Name'
+        return res.status(400).json({ error: "Missing required fields (Company ID, Contact Name, Address, City, State, Zip)." });
     }
-});
-
-
-// --- Company Management Endpoints (Admin Only) ---
-app.get("/companies", isAuthenticated, isAdmin, async (req, res) => {
     let conn;
     try {
-        conn = await pool.getConnection();
-        const [rows] = await conn.execute('SELECT id, name, address1, city, state, zip, country, terms, logo, discount, notes FROM companies ORDER BY name');
-        res.status(200).json(rows);
-    } catch (err) {
-        console.error("Error fetching companies:", err);
-        res.status(500).json({ error: "Failed to fetch companies." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.post("/add-company", isAuthenticated, isAdmin, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { name, address1, city, state, zip, country, terms, logo, discount, notes } = req.body;
-
-        if (!name || !terms) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company name and terms are required." });
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // If the new address is set as default, first unset all others for this company
+        if (is_default) {
+             await conn.execute(
+                `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?`,
+                [companyId]
+            );
         }
-
-        // Check for existing company name (case-insensitive)
-        const [existingCompanies] = await conn.execute(
-            'SELECT id FROM companies WHERE LOWER(name) = LOWER(?)',
-            [name]
-        );
-        if (existingCompanies.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "A company with this name already exists." });
-        }
-
+        // Include company_name in the insert statement
         const [result] = await conn.execute(
-            'INSERT INTO companies (name, address1, city, state, zip, country, terms, logo, discount, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [name, address1, city, state, zip, country, terms, logo, discount, notes || '']
+            `INSERT INTO shipto_addresses (company_id, name, company_name, address1, city, state, zip, country, is_default) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [companyId, name, company_name || null, address1, city, state, zip, country, is_default ? 1 : 0]
         );
-        const newCompanyId = result.insertId;
-
-        await conn.commit();
-        res.status(201).json({ message: "Company added successfully!", id: newCompanyId });
+        res.status(201).json({ id: result.insertId, message: "Address added successfully" });
     } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error adding company:", err);
-        res.status(500).json({ error: "Failed to add company." });
+        console.error("Error adding ship-to address:", err);
+        res.status(500).json({ error: "Failed to add ship-to address" });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-app.post("/edit-company", isAuthenticated, isAdmin, async (req, res) => {
+app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+    const { addressId } = req.params;
+    const { name, company_name, address1, city, state, zip, country } = req.body; // Added company_name
     let conn;
     try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { id, name, address1, city, state, zip, country, terms, logo, discount, notes } = req.body;
-
-        if (!id || !name || !terms) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company ID, name, and terms are required for update." });
-        }
-
-        // Check for duplicate company name, excluding the current company being edited
-        const [existingCompanies] = await conn.execute(
-            'SELECT id FROM companies WHERE LOWER(name) = LOWER(?) AND id != ?',
-            [name, id]
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        // Include company_name in the update statement
+        await conn.execute(
+            `UPDATE shipto_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
+            [name, company_name || null, address1, city, state, zip, country, addressId]
         );
-        if (existingCompanies.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "Another company with this name already exists." });
-        }
-
-        const [result] = await conn.execute(
-            'UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ?, discount = ?, notes = ? WHERE id = ?',
-            [name, address1, city, state, zip, country, terms, logo, discount, notes || '', id]
-        );
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Company not found or no changes made." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "Company updated successfully!" });
+        res.json({ message: "Address updated successfully" });
     } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error updating company:", err);
-        res.status(500).json({ error: "Failed to update company." });
+        console.error("Error updating ship-to address:", err);
+        res.status(500).json({ error: "Failed to update ship-to address" });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-app.post("/delete-company", isAuthenticated, isAdmin, async (req, res) => {
+app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+    const { addressId } = req.params;
+
     let conn;
     try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { id } = req.body;
-
-        if (!id) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company ID is required for deletion." });
-        }
-
-        // Delete associated shipping addresses first
-        await conn.execute('DELETE FROM shipto_addresses WHERE company_id = ?', [id]);
-
-        // Delete associated users
-        await conn.execute('DELETE FROM users WHERE company_id = ?', [id]);
-
-        // Delete the company
-        const [result] = await conn.execute('DELETE FROM companies WHERE id = ?', [id]);
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Company not found." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "Company and associated data deleted successfully!" });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error deleting company:", err);
-        res.status(500).json({ error: "Failed to delete company." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.get("/company-users/:companyId", isAuthenticated, authorizeCompanyAccess, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const { companyId } = req.params;
-        const [rows] = await conn.execute('SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE company_id = ? ORDER BY last_name, first_name', [companyId]);
-        res.status(200).json(rows);
-    } catch (err) {
-        console.error("Error fetching company users:", err);
-        res.status(500).json({ error: "Failed to fetch company users." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.get("/user/:userId", isAuthenticated, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const { userId } = req.params;
-
-        // Ensure the user is either an admin or is requesting their own profile
-        if (req.session.role !== 'admin' && req.session.userId !== parseInt(userId, 10)) {
-            return res.status(403).json({ error: "Forbidden: You can only view your own user details." });
-        }
-
-        const [rows] = await conn.execute('SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?', [userId]);
-        if (rows.length > 0) {
-            res.status(200).json(rows[0]);
-        } else {
-            res.status(404).json({ error: "User not found." });
-        }
-    } catch (err) {
-        console.error("Error fetching user details:", err);
-        res.status(500).json({ error: "Failed to fetch user details." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.post("/add-user", isAuthenticated, isAdmin, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { email, firstName, lastName, phone, role, password, companyId } = req.body;
-
-        if (!email || !password || !companyId) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Email, password, and company ID are required." });
-        }
-
-        // Check if user with this email already exists
-        const [existingUsersByEmail] = await conn.execute(
-            'SELECT id FROM users WHERE LOWER(email) = LOWER(?)',
-            [email]
-        );
-        if (existingUsersByEmail.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "User with this email already exists." });
-        }
-
-        // Check if user with same first_name and last_name exists for this company
-        const [existingUsersByName] = await conn.execute(
-            'SELECT id FROM users WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND company_id = ?',
-            [firstName, lastName, companyId]
-        );
-        if (existingUsersByName.length > 0) {
-            await conn.rollback();
-            return res.status(409).json({ error: "User Name Already Exists" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const [result] = await conn.execute(
-            'INSERT INTO users (email, first_name, last_name, phone, role, password, company_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [email, firstName, lastName, phone, role, hashedPassword, companyId]
-        );
-        const newUserId = result.insertId;
-
-        await conn.commit();
-        res.status(201).json({ message: "User added successfully!", id: newUserId });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error adding user:", err);
-        res.status(500).json({ error: "Failed to add user." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.post("/edit-user", isAuthenticated, isAdmin, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { id, email, firstName, lastName, phone, role, password, companyId } = req.body;
-
-        if (!id || !email || !companyId) {
-            await conn.rollback();
-            return res.status(400).json({ error: "User ID, email, and company ID are required for update." });
-        }
-
-        let updateSql = 'UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, company_id = ?';
-        const updateParams = [email, firstName, lastName, phone, role, companyId];
-
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            updateSql += ', password = ?';
-            updateParams.push(hashedPassword);
-        }
-        updateSql += ' WHERE id = ?';
-        updateParams.push(id);
-
-        const [result] = await conn.execute(updateSql, updateParams);
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "User not found or no changes made." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "User updated successfully!" });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error updating user:", err);
-        res.status(500).json({ error: "Failed to update user." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-app.post("/delete-user", isAuthenticated, isAdmin, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { id } = req.body;
-
-        if (!id) {
-            await conn.rollback();
-            return res.status(400).json({ error: "User ID is required for deletion." });
-        }
-
-        const [result] = await conn.execute('DELETE FROM users WHERE id = ?', [id]);
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "User not found." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "User deleted successfully!" });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error deleting user:", err);
-        res.status(500).json({ error: "Failed to delete user." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// --- Shipping Address Endpoints ---
-
-// Get all shipping addresses for a company
-app.get("/api/shipto/:companyId", isAuthenticated, authorizeCompanyAccess, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        const { companyId } = req.params;
-        const [rows] = await conn.execute('SELECT * FROM shipto_addresses WHERE company_id = ? ORDER BY is_default DESC, name ASC', [companyId]);
-        res.status(200).json(rows);
-    } catch (err) {
-        console.error("Error fetching shipping addresses:", err);
-        res.status(500).json({ error: "Failed to fetch shipping addresses." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Add a new shipping address
-app.post("/api/shipto", isAuthenticated, authorizeCompanyAccess, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { companyId, name, company_name, address1, city, state, zip, country } = req.body;
-
-        if (!companyId || !name || !address1 || !city || !state || !zip) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company ID, Address Reference, Address, City, State, and Zip are required." });
-        }
-
-        const [result] = await conn.execute(
-            'INSERT INTO shipto_addresses (company_id, name, company_name, address1, city, state, zip, country, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
-            [companyId, name, company_name, address1, city, state, zip, country]
-        );
-        const newAddressId = result.insertId;
-
-        await conn.commit();
-        res.status(201).json({ message: "Shipping address added successfully!", id: newAddressId });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error adding shipping address:", err);
-        res.status(500).json({ error: "Failed to add shipping address." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Update a shipping address
-app.put("/api/shipto/:addressId", isAuthenticated, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { addressId } = req.params;
-        const { name, company_name, address1, city, state, zip, country } = req.body;
-
-        if (!name || !address1 || !city || !state || !zip) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Address Reference, Address, City, State, and Zip are required." });
-        }
-
-        // First, verify that the user has access to this address's company
-        const [addressRows] = await conn.execute('SELECT company_id FROM shipto_addresses WHERE id = ?', [addressId]);
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        
+        // 1. Determine the companyId associated with the addressId
+        const [addressRows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [addressId]);
+        
         if (addressRows.length === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found." });
+            return res.status(404).json({ error: "Address not found." });
         }
-        const companyIdOfAddress = addressRows[0].company_id;
+        
+        const targetCompanyId = addressRows[0].company_id;
 
-        if (req.session.role !== 'admin' && req.session.companyId !== companyIdOfAddress) {
-            await conn.rollback();
-            return res.status(403).json({ error: "Forbidden: You do not have access to update this shipping address." });
+        // Ensure the logged-in user's company matches the target company
+        if (req.session.user.companyId !== targetCompanyId) {
+            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
         }
 
-        const [result] = await conn.execute(
-            'UPDATE shipto_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?',
-            [name, company_name, address1, city, state, zip, country, addressId]
+        await conn.beginTransaction(); // Start a transaction
+
+        // 2. Unset the 'is_default' flag for all other addresses of this target company
+        await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ? AND id != ?`,
+            [targetCompanyId, addressId]
         );
 
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found or no changes made." });
-        }
+        // 3. Set the 'is_default' flag to 1 for the selected address
+        // We only need to check the addressId here since we verified the companyId in step 2.
+        await conn.execute(
+            `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
+            [addressId]
+        );
 
-        await conn.commit();
-        res.status(200).json({ message: "Shipping address updated successfully!" });
+        await conn.commit(); // Commit the transaction
+        res.json({ message: "Default shipping address updated successfully." });
+
     } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error updating shipping address:", err);
-        res.status(500).json({ error: "Failed to update shipping address." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Delete a shipping address
-app.delete("/api/shipto/:addressId", isAuthenticated, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { addressId } = req.params;
-
-        // First, verify that the user has access to this address's company
-        const [addressRows] = await conn.execute('SELECT company_id FROM shipto_addresses WHERE id = ?', [addressId]);
-        if (addressRows.length === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found." });
+        if (conn) {
+            await conn.rollback(); // Rollback on error
         }
-        const companyIdOfAddress = addressRows[0].company_id;
-
-        if (req.session.role !== 'admin' && req.session.companyId !== companyIdOfAddress) {
-            await conn.rollback();
-            return res.status(403).json({ error: "Forbidden: You do not have access to delete this shipping address." });
-        }
-
-        const [result] = await conn.execute('DELETE FROM shipto_addresses WHERE id = ?', [addressId]);
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "Shipping address deleted successfully!" });
-    } catch (err) {
-        if (conn) await conn.rollback();
-        console.error("Error deleting shipping address:", err);
-        res.status(500).json({ error: "Failed to delete shipping address." });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Set a shipping address as default
-app.put("/api/shipto/:addressId/set-default", isAuthenticated, async (req, res) => {
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        const { addressId } = req.params;
-        const { companyId } = req.body; // Expect companyId in body for validation
-
-        if (!companyId) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Company ID is required." });
-        }
-
-        // Verify that the user has access to this company
-        if (req.session.role !== 'admin' && req.session.companyId !== companyId) {
-            await conn.rollback();
-            return res.status(403).json({ error: "Forbidden: You do not have access to this company." });
-        }
-
-        // Verify that the address belongs to the specified company
-        const [addressRows] = await conn.execute('SELECT id FROM shipto_addresses WHERE id = ? AND company_id = ?', [addressId, companyId]);
-        if (addressRows.length === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found for the specified company." });
-        }
-
-        // Set all addresses for this company to not default
-        await conn.execute('UPDATE shipto_addresses SET is_default = 0 WHERE company_id = ?', [companyId]);
-
-        // Set the specified address as default
-        const [result] = await conn.execute('UPDATE shipto_addresses SET is_default = 1 WHERE id = ?', [addressId]);
-
-        if (result.affectedRows === 0) {
-            await conn.rollback();
-            return res.status(404).json({ error: "Shipping address not found or no changes made." });
-        }
-
-        await conn.commit();
-        res.status(200).json({ message: "Default shipping address set successfully!" });
-    } catch (err) {
-        if (conn) await conn.rollback();
         console.error("Error setting default shipping address:", err);
         res.status(500).json({ error: "Failed to set default shipping address." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-// --- PDF Generation and Emailing ---
+app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+    const { addressId } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+        await conn.execute("DELETE FROM shipto_addresses WHERE id = ?", [addressId]);
+        res.json({ message: "Address deleted successfully" });
+    } catch (err) {
+        console.error("Error deleting ship-to address:", err);
+        res.status(500).json({ error: "Failed to delete ship-to address" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
 
-async function generatePdfFromHtml(htmlContent, orderId, poNumber) {
+// Helper function to generate HTML for the order email
+function generateOrderHtmlEmail(orderData) {
+    let itemsHtml = orderData.items.map(item => `
+        <tr>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
+        </tr>
+    `).join('');
+
+    const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    return `
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
+                <h1 style="color: #333;">Order Information</h1>
+            </div>
+            
+            <p>Order details:</p>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Billed To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
+                    <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                    <p><strong>PO#:</strong> ${orderData.poNumber}</p>
+                    <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                </div>
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Ship To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
+                    <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                    <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
+                    <p><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
+                    <p><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                </div>
+            </div>
+
+            <h2 style="color: #555;">Order Summary</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <thead>
+                    <tr>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemsHtml}
+                </tbody>
+            </table>
+            <p style="font-weight: bold; text-align: right;">Item Count: ${totalQuantity}</p>
+            <p style="font-weight: bold; text-align: right;">Total Price: $${totalPrice.toFixed(2)}</p>
+
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
+                <strong>Chicago Stainless Equipment, Inc.</strong><br>
+                1280 SW 34th St<br>
+                Palm City, FL 34990 USA<br>
+                772-781-1441
+            </div>
+        </div>
+    `;
+}
+
+// NEW: Function to generate PDF from HTML content
+async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Launch puppeteer using @sparticuz/chromium's bundled puppeteer-core
-        browser = await puppeteerExtra.launch({
-            executablePath: await chromium.executablePath(), // Path to the Chromium executable
-            args: [...chromium.args, '--hide-scrollbars', '--disable-web-security'], // Recommended args from @sparticuz/chromium
-            headless: chromium.headless, // Use chromium's headless mode setting
-            ignoreHTTPSErrors: true,
+        // Launch a headless browser
+        browser = await puppeteer.launch({
+            headless: true, // Set to 'true' for production environments
+            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
         });
-
         const page = await browser.newPage();
 
-        // Set content and wait for network to be idle
-        await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+        // Set content of the page
+        await page.setContent(htmlContent, {
+            waitUntil: 'networkidle0' // Wait until network is idle
+        });
 
         // Generate PDF
         const pdfBuffer = await page.pdf({
-            format: 'Letter',
-            printBackground: true,
+            format: 'Letter', // Or 'A4', etc.
+            printBackground: true, // Ensure background colors/images are printed
             margin: {
                 top: '0.5in',
                 right: '0.5in',
@@ -872,7 +869,6 @@ async function generatePdfFromHtml(htmlContent, orderId, poNumber) {
                 left: '0.5in'
             }
         });
-
         return pdfBuffer;
     } catch (error) {
         console.error("Error generating PDF:", error);
@@ -885,126 +881,74 @@ async function generatePdfFromHtml(htmlContent, orderId, poNumber) {
 }
 
 
-app.post("/submit-order", isAuthenticated, async (req, res) => {
+app.post("/submit-order", requireAuth, async (req, res) => {
+    const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
+    const userId = req.session.user.id;
+    const companyId = req.session.user.companyId;
+    const userEmail = req.session.user.email; // Get user's email from session
+
+    console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
+
+    // Validate required fields based on the 'orders' table schema provided
+    if (!userEmail || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
+        console.error("Validation Error: Missing required order fields or empty cart.", { userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, items });
+        return res.status(400).json({ error: "Missing required order fields or empty cart." });
+    }
+
     let conn;
     try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.beginTransaction(); // Start a transaction
 
-        const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
-        const userId = req.session.userId;
-        const companyId = req.session.companyId;
-
-        if (!userId || !companyId) {
-            await conn.rollback();
-            return res.status(401).json({ error: "User or company information missing from session." });
-        }
-
-        if (!poNumber || !orderedBy || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Missing required order details." });
-        }
-
-        // Fetch company discount
-        const [companyRows] = await conn.execute('SELECT discount FROM companies WHERE id = ?', [companyId]);
-        const companyDiscount = companyRows.length > 0 ? companyRows[0].discount : 0;
-        const discountFactor = (100 - companyDiscount) / 100;
-
-        // Calculate total price with discount applied
-        let totalPrice = 0;
-        const processedItems = items.map(item => {
-            const netPrice = item.price * discountFactor;
-            const lineTotal = item.quantity * netPrice;
-            totalPrice += lineTotal;
-            return {
-                ...item,
-                netPrice: netPrice, // Store the calculated net price
-                lineTotal: lineTotal // Store the calculated line total
-            };
-        });
-
-        // Insert order into orders table
+        // Insert into orders table, matching the provided schema exactly
         const [orderResult] = await conn.execute(
-            'INSERT INTO orders (user_id, company_id, po_number, ordered_by, billing_address, shipping_address, shipping_address_id, attn, tag, shipping_method, carrier_account, total_price, discount_percentage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [userId, companyId, poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, totalPrice, companyDiscount]
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
-        // Insert order items into order_items table
-        for (const item of processedItems) {
-            await conn.execute(
-                'INSERT INTO order_items (order_id, part_number, quantity, list_price, net_price, line_total, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [orderId, item.partNo, item.quantity, item.price, item.netPrice, item.lineTotal, item.note]
-            );
+        // Fetch company name for the email subject
+        let companyName = "Unknown Company";
+        if (companyId) {
+            const [companyRows] = await conn.execute("SELECT name FROM companies WHERE id = ?", [companyId]);
+            if (companyRows.length > 0) {
+                companyName = companyRows[0].name;
+            }
         }
 
-        await conn.commit();
+        await conn.commit(); // Commit the transaction
 
-        // --- PDF Generation and Emailing (outside transaction for atomicity) ---
-        let pdfBuffer = null;
-        let emailHtmlContent = `
-            <h1>Order Confirmation - Order #${orderId}</h1>
-            <p><strong>PO Number:</strong> ${poNumber}</p>
-            <p><strong>Ordered By:</strong> ${orderedBy}</p>
-            <p><strong>Billing Address:</strong><br>${billingAddress.replace(/\n/g, '<br>')}</p>
-            <p><strong>Shipping Address:</strong><br>${shippingAddress.replace(/\n/g, '<br>')}</p>
-            ${attn ? `<p><strong>ATTN:</strong> ${attn}</p>` : ''}
-            ${tag ? `<p><strong>Tag#:</strong> ${tag}</p>` : ''}
-            <p><strong>Shipping Method:</strong> ${shippingMethod}</p>
-            ${carrierAccount ? `<p><strong>Carrier Account #:</strong> ${carrierAccount}</p>` : ''}
-            
-            <h2>Items:</h2>
-            <table border="1" cellpadding="5" cellspacing="0" width="100%">
-                <thead>
-                    <tr>
-                        <th>Qty</th>
-                        <th>Part Number</th>
-                        <th>List Price</th>
-                        <th>Net Price (-${companyDiscount}%)</th>
-                        <th>Total</th>
-                        <th>Notes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${processedItems.map(item => `
-                        <tr>
-                            <td>${item.quantity}</td>
-                            <td>${item.partNo}</td>
-                            <td>$${item.price.toFixed(2)}</td>
-                            <td>$${item.netPrice.toFixed(2)}</td>
-                            <td>$${item.lineTotal.toFixed(2)}</td>
-                            <td>${item.note || ''}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            <h3>Total Order Price: $${totalPrice.toFixed(2)}</h3>
-            <p>Thank you for your order!</p>
-            <p>For any questions, please contact us at 772-781-1441 or sales@chicagostainless.com.</p>
-            <p>This is an automated email. Please do not reply.</p>
-        `;
+        // NEW: Generate HTML for the email body and PDF
+        const orderDetailsForEmail = {
+            poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount, items,
+            terms: req.body.terms // Ensure terms are passed if available
+        };
+        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
 
+        let pdfBuffer;
         try {
-            pdfBuffer = await generatePdfFromHtml(emailHtmlContent, orderId, poNumber);
+            pdfBuffer = await generatePdfFromHtml(orderHtmlContent);
             console.log("PDF generated successfully.");
         } catch (pdfError) {
             console.error("Failed to generate PDF, proceeding without attachment:", pdfError);
-            // Optionally, append a message to the email body if PDF generation fails
-            emailHtmlContent += `<p style="color: red;">Note: A PDF attachment could not be generated for this order. Please contact support for order details.</p>`;
+            // Optionally, send an email without the PDF if PDF generation fails
         }
 
+        // NEW: Send order information email to you (the administrator) with PDF attachment
+        const myEmailAddress = "Greg@ChicagoStainless.com"; // Your specified recipient email address
+
         const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: process.env.ORDER_NOTIFICATION_EMAIL, // Send to a dedicated order notification email
-            subject: `New Order #${orderId} - PO# ${poNumber} from ${orderedBy}`,
+            from: userEmail, // Email will now come from the logged-in user's email address
+            to: myEmailAddress, // Email will be sent to this address
+            subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
-                <p>A new order has been submitted through the checkout portal.</p>
+                <p>Hello,</p>
+                <p>A new order has been submitted through the checkout page.</p>
                 <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>Customer Email:</strong> ${userEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
-                <p><strong>Ordered By:</strong> ${orderedBy}</p>
-                <p><strong>Company ID:</strong> ${companyId}</p>
-                <p><strong>Total Price:</strong> $${totalPrice.toFixed(2)}</p>
-                <p>Full order information attached as a PDF.</p>
+                <p>Please find the detailed order information attached as a PDF.</p>
                 <p>Thank you.</p>
             `,
             attachments: pdfBuffer ? [
@@ -1032,7 +976,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
             await conn.rollback(); // Rollback on error
         }
         // Log the full error object for detailed debugging on the backend server
-        console.error("Error submitting order (Backend):", err);
+        console.error("Error submitting order (Backend):", err); 
         res.status(500).json({ error: "Failed to submit order due to server error." });
     } finally {
         if (conn) conn.end();
@@ -1043,9 +987,9 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
-  res.redirect("/admin-dashboard.html");
+  res.redirect("/admin-dashboard.html"); 
 });
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running at http://localhost:${PORT}`);
 });
