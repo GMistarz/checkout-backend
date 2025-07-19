@@ -878,11 +878,13 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        console.log(`Puppeteer: Attempting to launch browser with auto-discovery.`);
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+        console.log(`Puppeteer: Attempting to launch browser with executablePath: ${executablePath}`);
+        
         // Launch a headless browser, relying on auto-discovery for the executable path
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            // Removed: executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome', // Explicitly set path
+            executablePath: executablePath, // Explicitly set path
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
@@ -1026,4 +1028,5 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+
 });
