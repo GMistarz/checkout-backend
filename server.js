@@ -1008,7 +1008,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     } catch (err) {
         if (conn) {
             await conn.rollback(); // Rollback on error
-        }\
+        }
         // Log the full error object for detailed debugging on the backend server
         console.error("Error submitting order (Backend):", err); 
         res.status(500).json({ error: "Failed to submit order due to server error." });
