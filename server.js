@@ -89,7 +89,7 @@ app.use(session({
         maxAge: 86400000, // 1 day
         httpOnly: true, // Prevent client-side JS from reading the cookie
         secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        sameSite: 'Lax' // Protect against CSRF
+        sameSite: 'None' // IMPORTANT: Changed from 'Lax' to 'None' for cross-site cookie sending
     }
 }));
 
