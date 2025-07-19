@@ -1000,9 +1000,10 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         });
 
         // Insert into orders table, matching the provided schema exactly
+        // FIX: Moved 'date' column to the end and 'NOW()' as its value to match parameter count
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, user_id, company_id, shipping_address_id, attn, tag, total_amount, discount_applied)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, user_id, company_id, shipping_address_id, attn, tag, total_amount, discount_applied, date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
             [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items), userId, companyId, shippingAddressId, attn || null, tag || null, totalAmount, companyDiscount]
         );
         const orderId = orderResult.insertId;
