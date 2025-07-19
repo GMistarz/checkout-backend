@@ -881,8 +881,9 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Explicitly set the executablePath to the system-installed Chromium on Render.com
-        const executablePath = '/usr/bin/chromium-browser'; 
+        // Explicitly set the executablePath to the system-installed Google Chrome on Render.com
+        // This path is often more reliable for Render's environment than chromium-browser
+        const executablePath = '/usr/bin/google-chrome'; 
         console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
 
         // Launch a headless browser
