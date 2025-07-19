@@ -881,15 +881,12 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        // Explicitly set the executablePath to the system-installed Google Chrome on Render.com
-        // This path is often more reliable for Render's environment than chromium-browser
-        const executablePath = '/usr/bin/google-chrome'; 
-        console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
+        // Removed executablePath: executablePath, to allow Puppeteer to auto-discover
+        console.log(`Puppeteer: Attempting to launch browser (auto-discovery).`);
 
         // Launch a headless browser
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            executablePath: executablePath, // Use the explicitly defined executablePath
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
