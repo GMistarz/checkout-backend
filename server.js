@@ -6,6 +6,9 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
+const os = require('os'); // NEW: Import os module
+const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp directory names
+const fs = require('fs/promises'); // NEW: For async file system operations
 
 // NEW: Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
@@ -879,13 +882,20 @@ function generateOrderHtmlEmail(orderData) {
 // NEW: Function to generate PDF from HTML content
 async function generatePdfFromHtml(htmlContent) {
     let browser;
+    let userDataDir; // Declare userDataDir here
     try {
+        // Create a unique temporary directory for Puppeteer's user data
+        userDataDir = path.join(os.tmpdir(), `puppeteer_user_data_${uuidv4()}`);
+        await fs.mkdir(userDataDir, { recursive: true });
+        console.log(`Created temporary user data directory: ${userDataDir}`);
+
         // Use @sparticuz/chromium for executable path and args
         browser = await puppeteer.launch({
             args: [...chromium.args, '--disable-gpu', '--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox'], // Include necessary args for Render
             executablePath: await chromium.executablePath(), // Get the path from chromium package
             headless: chromium.headless, // Use recommended headless setting
-            ignoreHTTPSErrors: true // Sometimes useful for local dev or specific setups
+            ignoreHTTPSErrors: true, // Sometimes useful for local dev or specific setups
+            userDataDir: userDataDir // NEW: Use the unique temporary directory
         });
         const page = await browser.newPage();
 
@@ -913,6 +923,15 @@ async function generatePdfFromHtml(htmlContent) {
     } finally {
         if (browser) {
             await browser.close();
+        }
+        // NEW: Clean up the temporary user data directory
+        if (userDataDir) {
+            try {
+                await fs.rm(userDataDir, { recursive: true, force: true });
+                console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
+            } catch (cleanupError) {
+                console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
+            }
         }
     }
 }
