@@ -262,6 +262,9 @@ app.post("/login", async (req, res) => {
         req.session.role = user.role;
         req.session.companyId = user.company_id; // Store companyId in session
 
+        // NEW: Log session cookie details after it's set
+        console.log("Server-side session cookie attributes after login:", req.session.cookie);
+
         res.status(200).json({ message: "Logged in successfully", user: { id: user.id, email: user.email, role: user.role, company_id: user.company_id } });
     } catch (err) {
         console.error("Login error:", err);
