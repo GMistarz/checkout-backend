@@ -1,4 +1,4 @@
-requirerequire('dotenv').config(); // Loads environment variables for emailing
+require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -1008,7 +1008,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     } catch (err) {
         if (conn) {
             await conn.rollback(); // Rollback on error
-        }
+        }\
         // Log the full error object for detailed debugging on the backend server
         console.error("Error submitting order (Backend):", err); 
         res.status(500).json({ error: "Failed to submit order due to server error." });
