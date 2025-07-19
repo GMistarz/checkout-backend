@@ -584,10 +584,7 @@ app.get("/test-company-details", async (req, res) => {
     console.error("Error in /test-company-details route:", err);
     res.status(500).json({ error: "Failed to retrieve test company details." });
   } finally {
-    if (conn) {
-      conn.end();
-      console.log("[Test Company Details] Database connection closed.");
-    }
+    if (conn) conn.end();
   }
 });
 
@@ -810,25 +807,51 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
 });
 
 // Helper function to generate HTML for the order email
-function generateOrderHtmlEmail(orderData) {
-    let itemsHtml = orderData.items.map(item => `
-        <tr>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
-            <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
-        </tr>
-    `).join('');
+function generateOrderHtmlEmail(orderData, companyDiscount) { // Added companyDiscount parameter
+    let itemsHtml = orderData.items.map(item => {
+        const discountFactor = (100 - companyDiscount) / 100;
+        const netPrice = item.price * discountFactor;
+        const lineTotal = item.quantity * netPrice;
+        return `
+            <tr>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${netPrice.toFixed(2)}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${lineTotal.toFixed(2)}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
+            </tr>
+        `;
+    }).join('');
 
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalListPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalNetPrice = orderData.items.reduce((sum, item) => sum + (item.quantity * (item.price * ((100 - companyDiscount) / 100))), 0);
+
 
     return `
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
-            <div style="text-align: center; margin-bottom: 20px;">
-                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
-                <h1 style="color: #333;">Order Information</h1>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Order Confirmation</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
+                .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+                .header img { height: 50px; margin-right: 20px; } /* Logo on left, with margin */
+                .header h1 { margin: 0; font-size: 20px; color: #333; flex-grow: 1; text-align: center; } /* Header text centered */
+                .section { margin-bottom: 15px; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
+                .section h3 { margin-top: 0; margin-bottom: 10px; color: #555; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                .total-section { text-align: right; font-size: 14px; font-weight: bold; margin-top: 20px; }
+                .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #777; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo">
+                <h1>CSE WEBSITE ORDER</h1>
             </div>
             
             <p>Order details:</p>
@@ -857,8 +880,9 @@ function generateOrderHtmlEmail(orderData) {
                     <tr>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">List Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Net Price (-${companyDiscount}%)</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Line Total</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
                     </tr>
                 </thead>
@@ -867,7 +891,8 @@ function generateOrderHtmlEmail(orderData) {
                 </tbody>
             </table>
             <p style="font-weight: bold; text-align: right;">Item Count: ${totalQuantity}</p>
-            <p style="font-weight: bold; text-align: right;">Total Price: $${totalPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right;">Total List Price: $${totalListPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right;">Total Net Price: $${totalNetPrice.toFixed(2)}</p>
 
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
@@ -875,12 +900,13 @@ function generateOrderHtmlEmail(orderData) {
                 Palm City, FL 34990 USA<br>
                 772-781-1441
             </div>
-        </div>
+        </body>
+        </html>
     `;
 }
 
 // NEW: Function to generate PDF from HTML content
-async function generatePdfFromHtml(htmlContent) {
+async function generatePdfFromHtml(htmlContent, orderId, poNumber) { // Added orderId, poNumber for logging
     let browser;
     let userDataDir; // Declare userDataDir here
     try {
@@ -915,10 +941,10 @@ async function generatePdfFromHtml(htmlContent) {
                 left: '0.5in'
             }
         });
-        console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`); // Log PDF buffer size
+        console.log(`PDF generated successfully for Order ID: ${orderId}, PO#: ${poNumber}. Buffer size: ${pdfBuffer.length} bytes.`); // Log PDF buffer size with order details
         return pdfBuffer;
     } catch (error) {
-        console.error("Error generating PDF:", error);
+        console.error(`Error generating PDF for Order ID: ${orderId}, PO#: ${poNumber}:`, error);
         throw new Error("Failed to generate PDF for order confirmation.");
     } finally {
         if (browser) {
@@ -956,11 +982,28 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction(); // Start a transaction
 
+        // Fetch company discount
+        let companyDiscount = 0;
+        if (companyId) {
+            const [companyRows] = await conn.execute("SELECT discount FROM companies WHERE id = ?", [companyId]);
+            if (companyRows.length > 0) {
+                companyDiscount = companyRows[0].discount;
+            }
+        }
+        const discountFactor = (100 - companyDiscount) / 100;
+
+        // Calculate total amount with discount applied to each item's net price
+        let totalAmount = 0;
+        items.forEach(item => {
+            const netPrice = item.price * discountFactor;
+            totalAmount += item.quantity * netPrice;
+        });
+
         // Insert into orders table, matching the provided schema exactly
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, user_id, company_id, shipping_address_id, attn, tag, total_amount, discount_applied)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)`,
+            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items), userId, companyId, shippingAddressId, attn || null, tag || null, totalAmount, companyDiscount]
         );
         const orderId = orderResult.insertId;
 
@@ -980,11 +1023,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount, items,
             terms: req.body.terms // Ensure terms are passed if available
         };
-        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
+        const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail, companyDiscount); // Pass companyDiscount
 
         let pdfBuffer;
         try {
-            pdfBuffer = await generatePdfFromHtml(orderHtmlContent);
+            pdfBuffer = await generatePdfFromHtml(orderHtmlContent, orderId, poNumber); // Pass orderId, poNumber for logging
             console.log("PDF generated successfully.");
         } catch (pdfError) {
             console.error("Failed to generate PDF, proceeding without attachment:", pdfError);
