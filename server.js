@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables from .env file
+require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -6,7 +6,18 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
-const puppeteer = require('puppeteer'); // NEW: Import Puppeteer for PDF generation
+
+// NEW: Import puppeteer-extra and the stealth plugin
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+// Apply the stealth plugin to puppeteer
+puppeteer.use(StealthPlugin());
+
+// Removed: process.env.PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = 'true';
+// This line is removed so that Puppeteer will download Chromium during npm install.
+// Removed: process.env.PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome';
+// This should now be handled by Puppeteer's auto-discovery or a Render-set env var.
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -112,18 +123,22 @@ app.use(session({
 // provider allows sending from arbitrary 'from' addresses, or consider using your
 // authenticated email address as the 'from' address in mailOptions.
 const transporter = nodemailer.createTransport({
-    host: "smtp.your-email-service.com", // e.g., "smtp.gmail.com" for Gmail, "smtp.mailgun.org" for Mailgun
-    port: 587, // Common ports: 587 (TLS), 465 (SSL)
-    secure: false, // Use 'true' if port is 465 (SSL), 'false' for other ports (TLS)
+    host: process.env.SMTP_HOST, // Using environment variable
+    port: process.env.SMTP_PORT, // Using environment variable
+    secure: process.env.SMTP_SECURE === 'true', // Using environment variable, convert string to boolean
     auth: {
-        user: "your-email@example.com", // Your sending email address (this account must be authenticated)
-        pass: "your-email-password" // Your email password or app-specific password
+        user: process.env.EMAIL_USER, // Using environment variable
+        pass: process.env.EMAIL_PASS // Using environment variable
     },
     tls: {
         // Do not fail on invalid certs
         rejectUnauthorized: false
     }
 });
+
+// NEW: Log Nodemailer configuration details (excluding password for security)
+console.log(`Nodemailer Config: Host=${process.env.SMTP_HOST}, Port=${process.env.SMTP_PORT}, Secure=${process.env.SMTP_SECURE}, User=${process.env.EMAIL_USER}`);
+
 
 // --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
@@ -301,7 +316,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Using direct parameter binding for the integer ID
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Re-added notes
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
@@ -362,7 +377,7 @@ app.post("/logout", (req, res) => {
 // --- NEW: Registration Endpoints ---
 
 app.post("/register-company", async (req, res) => {
-  const { name, address1, city, state, zip, country, terms, logo } = req.body;
+  const { name, address1, city, state, zip, country, terms, logo, discount } = req.body; // Removed notes
   if (!name || !address1 || !city || !state || !zip) {
     return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
   }
@@ -370,11 +385,11 @@ app.post("/register-company", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30']
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Re-added notes column
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, ''] // Re-added notes value (empty string)
     );
-    res.status(201).json({ message: "Company registered successfully", companyId: result.insertId });
+    res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId }); // Added id to response
   } catch (err) {
     console.error("Failed to register company:", err);
     // Check for duplicate entry error (e.g., if company name is unique)
@@ -458,7 +473,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [companies] = await conn.execute("SELECT * FROM companies");
+    const [companies] = await conn.execute("SELECT *, discount, notes FROM companies"); // Re-added notes in select
     res.json(companies);
   } catch (err) {
     console.error("Failed to retrieve companies:", err);
@@ -470,13 +485,34 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // Updated: Removed address2 from edit-company route
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, city, state, zip, country, terms, logo } = req.body;
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "Company ID is required for update." });
+  }
+
+  const fieldsToUpdate = [];
+  const values = [];
+
+  // Dynamically build the SET clause for the UPDATE query
+  for (const key in req.body) {
+    if (key !== 'id') { // Exclude 'id' from the SET clause
+      fieldsToUpdate.push(`${key} = ?`);
+      values.push(req.body[key]);
+    }
+  }
+
+  if (fieldsToUpdate.length === 0) {
+    return res.status(400).json({ error: "No fields provided for update." });
+  }
+
+  values.push(id); // Add the ID for the WHERE clause
+
   let conn;
   try {
-    conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    conn = await mysql.createConnection(dbConnectionConfig);
     await conn.execute(
-      `UPDATE companies SET name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, logo = ? WHERE id = ?`,
-      [name, address1, city, state, zip, country, terms, logo, id]
+      `UPDATE companies SET ${fieldsToUpdate.join(', ')} WHERE id = ?`,
+      values
     );
     res.json({ message: "Company updated" });
   } catch (err) {
@@ -489,16 +525,16 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, city, state, zip, country, terms
+    name, logo, address1, city, state, zip, country, terms, discount // Removed notes
   } = req.body;
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, logo, address1, city, state, zip, country, terms]);
-    res.status(200).json({ message: "Company created" });
+    const [result] = await conn.execute(`
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms, discount, '']); // Re-added notes as empty string
+    res.status(200).json({ message: "Company created", id: result.insertId }); // Added id to response
   } catch (err) {
     console.error("Failed to create company:", err);
     res.status(500).json({ error: "Failed to create company" });
@@ -533,7 +569,7 @@ app.get("/test-company-details", async (req, res) => {
     console.log("[Test Company Details] Database connection established.");
 
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms FROM companies WHERE id = ?",
+      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Re-added notes
       [testCompanyId]
     );
     console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
@@ -658,7 +694,7 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => { 
 });
 
 app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
-    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; // Added company_name
+    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body; 
     
     if (!companyId || !name || !address1 || !city || !state || !zip) { // 'name' is now 'Contact Name'
         return res.status(400).json({ error: "Missing required fields (Company ID, Contact Name, Address, City, State, Zip)." });
@@ -690,7 +726,7 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => { // Use aut
 
 app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
     const { addressId } = req.params;
-    const { name, company_name, address1, city, state, zip, country } = req.body; // Added company_name
+    const { name, company_name, address1, city, state, zip, country } = req.body; 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
@@ -708,7 +744,8 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => { 
     }
 });
 
-app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Use authorizeCompanyAccess
+// MODIFIED: /api/shipto/:addressId/set-default route to allow admins to set default for any company
+app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => { // Changed middleware to authorizeCompanyAccess
     const { addressId } = req.params;
 
     let conn;
@@ -724,10 +761,10 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         
         const targetCompanyId = addressRows[0].company_id;
 
-        // Ensure the logged-in user's company matches the target company
-        if (req.session.user.companyId !== targetCompanyId) {
-            return res.status(403).json({ error: "Forbidden: You can only set default addresses for your own company." });
-        }
+        // The authorizeCompanyAccess middleware now handles the permission check.
+        // If the user is an admin, they will pass. If they are a regular user,
+        // authorizeCompanyAccess will ensure targetCompanyId matches their companyId.
+        // Therefore, the explicit check `if (req.session.user.companyId !== targetCompanyId)` is removed from here.
 
         await conn.beginTransaction(); // Start a transaction
 
@@ -738,7 +775,6 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
         );
 
         // 3. Set the 'is_default' flag to 1 for the selected address
-        // We only need to check the addressId here since we verified the companyId in step 2.
         await conn.execute(
             `UPDATE shipto_addresses SET is_default = 1 WHERE id = ?`,
             [addressId]
@@ -847,10 +883,19 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
+        // Puppeteer will now automatically try to find the downloaded browser
+        // or use an executable path if it's set as an environment variable by Render.
+        const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath();
+        console.log(`Puppeteer: Attempting to launch browser from: ${executablePath}`);
+        // NEW LOG: Explicitly log the resolved executable path
+        console.log(`Puppeteer Resolved Executable Path: ${executablePath}`);
+
+
         // Launch a headless browser
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            args: ['--no-sandbox', '--disable-setuid-sandbox'] // Required for some environments like Render
+            executablePath: executablePath, 
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
 
@@ -940,12 +985,12 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const myEmailAddress = "Greg@ChicagoStainless.com"; // Your specified recipient email address
 
         const mailOptions = {
-            from: userEmail, // Email will now come from the logged-in user's email address
+            from: process.env.EMAIL_USER, // Changed to use the authenticated email user for better deliverability
             to: myEmailAddress, // Email will be sent to this address
             subject: `${companyName} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
                 <p>Hello,</p>
-                <p>A new order has been submitted through the checkout page.</p>
+                <p>A new order has been submitted through the www.ChicagoStainless.com checkout page.</p>
                 <p><strong>Order ID:</strong> ${orderId}</p>
                 <p><strong>Customer Email:</strong> ${userEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
@@ -993,4 +1038,4 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
-});
+}); 
