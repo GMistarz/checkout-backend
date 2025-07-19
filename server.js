@@ -878,11 +878,11 @@ function generateOrderHtmlEmail(orderData) {
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     try {
-        console.log(`Puppeteer: Attempting to launch browser with executablePath.`);
-        // Launch a headless browser, explicitly specifying the executable path
+        console.log(`Puppeteer: Attempting to launch browser with auto-discovery.`);
+        // Launch a headless browser, relying on auto-discovery for the executable path
         browser = await puppeteer.launch({
             headless: true, // Set to 'true' for production environments
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome', // Explicitly set path
+            // Removed: executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome', // Explicitly set path
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--single-process', '--no-zygote'] // Added --single-process and --no-zygote for Render
         });
         const page = await browser.newPage();
