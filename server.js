@@ -71,13 +71,21 @@ const sessionStore = new MySQLStore({
     endConnectionOnClose: true,
 }, pool); // Pass the pool directly
 
+// Determine frontend URL for CORS - EXPLICITLY SET FOR DEBUGGING
+const frontendUrl = 'https://chicagostainless.com'; // Explicitly set for testing
+console.log(`CORS configured for origin: ${frontendUrl}`);
+
 // Middleware
 app.use(cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:8080', // THIS LINE IS UPDATED
+    origin: frontendUrl,
     credentials: true
 }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public' directory
+
+const isProduction = process.env.NODE_ENV === 'production';
+console.log(`Node Environment: ${process.env.NODE_ENV}, Secure cookie flag: ${isProduction}`);
+console.log(`Session cookie SameSite: 'None'`);
 
 app.use(session({
     key: 'session_cookie_name', // Cookie name
@@ -88,7 +96,7 @@ app.use(session({
     cookie: {
         maxAge: 86400000, // 1 day
         httpOnly: true, // Prevent client-side JS from reading the cookie
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+        secure: isProduction, // Use secure cookies in production
         sameSite: 'None' // IMPORTANT: Changed from 'Lax' to 'None' for cross-site cookie sending
     }
 }));
