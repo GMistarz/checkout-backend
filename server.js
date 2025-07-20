@@ -839,7 +839,7 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
                 .section h3 { margin-top: 0; margin-bottom: 10px; color: #555; }
                 table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
                 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; }
+                th { background-color: #e0e0e0; } /* Changed to darker gray */
                 .total-section { text-align: right; font-size: 14px; font-weight: bold; margin-top: 20px; }
                 .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #777; }
             </style>
@@ -854,14 +854,14 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
 
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
                 <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
-                    <h2 style="margin-top: 0; color: #555; background-color: #f2f2f2; padding: 5px;">Billed To:</h2>
+                    <h2 style="margin-top: 0; color: #555; background-color: #e0e0e0; padding: 5px;">Bill To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
                     <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
                     <p><strong>PO#:</strong> ${orderData.poNumber}</p>
                     <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                 </div>
                 <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
-                    <h2 style="margin-top: 0; color: #555; background-color: #f2f2f2; padding: 5px;">Ship To:</h2>
+                    <h2 style="margin-top: 0; color: #555; background-color: #e0e0e0; padding: 5px;">Ship To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
                     <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
                     <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
@@ -874,11 +874,11 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: center;">Qty</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0;">Part Number</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0;">Note</th>
                     </tr>
                 </thead>
                 <tbody>
