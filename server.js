@@ -857,8 +857,8 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
                     <h2 style="margin-top: 0; color: #555; background-color: #e0e0e0; padding: 5px;">Bill To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
                     <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                    <p><strong>PO#:</strong> ${orderData.poNumber}</p>
                     <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                    <p><strong>PO#:</strong> ${orderData.poNumber}</p>
                 </div>
                 <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
                     <h2 style="margin-top: 0; color: #555; background-color: #e0e0e0; padding: 5px;">Ship To:</h2>
@@ -984,12 +984,14 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         );
         const orderId = orderResult.insertId;
 
-        // Fetch company name for the email subject
+        // Fetch company name and terms for the email
         let companyName = "Unknown Company";
+        let companyTerms = "N/A"; // Default value
         if (companyId) {
-            const [companyRows] = await conn.execute("SELECT name FROM companies WHERE id = ?", [companyId]);
+            const [companyRows] = await conn.execute("SELECT name, terms FROM companies WHERE id = ?", [companyId]);
             if (companyRows.length > 0) {
                 companyName = companyRows[0].name;
+                companyTerms = companyRows[0].terms; // Fetch terms from database
             }
         }
 
@@ -998,7 +1000,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         // NEW: Generate HTML for the email body and PDF
         const orderDetailsForEmail = {
             poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount, items,
-            terms: req.body.terms // Ensure terms are passed if available
+            terms: companyTerms // Use fetched terms here
         };
         // Removed companyDiscount parameter from generateOrderHtmlEmail call
         const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail); 
