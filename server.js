@@ -831,9 +831,10 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
             <title>Order Confirmation</title>
             <style>
                 body { font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }
-                .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+                .header { display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; position: relative; } /* Added position: relative */
                 .header img { height: 50px; margin-right: 20px; } /* Logo on left, with margin */
-                .header h1 { margin: 0; font-size: 20px; color: #333; flex-grow: 1; text-align: center; } /* Header text centered */
+                /* Modified h1 style for absolute centering */
+                .header h1 { margin: 0; font-size: 20px; color: #333; position: absolute; left: 50%; transform: translateX(-50%); } 
                 .section { margin-bottom: 15px; border: 1px solid #eee; padding: 10px; border-radius: 5px; }
                 .section h3 { margin-top: 0; margin-bottom: 10px; color: #555; }
                 table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
@@ -844,9 +845,9 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
             </style>
         </head>
         <body>
-            <div class="header">
-                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo">
-                <h1>CSE WEBSITE ORDER</h1>
+            <div class="header" style="display: flex; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ccc; padding-bottom: 10px; position: relative;">
+                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 50px; margin-right: 20px;">
+                <h1 style="margin: 0; font-size: 20px; color: #333; position: absolute; left: 50%; transform: translateX(-50%);">CSE WEBSITE ORDER</h1>
             </div>
             
             <p>Order details:</p>
