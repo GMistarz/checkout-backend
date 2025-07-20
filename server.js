@@ -854,14 +854,14 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
 
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
                 <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
-                    <h2 style="margin-top: 0; color: #555;">Billed To:</h2>
+                    <h2 style="margin-top: 0; color: #555; background-color: #f2f2f2; padding: 5px;">Billed To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
                     <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
                     <p><strong>PO#:</strong> ${orderData.poNumber}</p>
                     <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                 </div>
                 <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
-                    <h2 style="margin-top: 0; color: #555;">Ship To:</h2>
+                    <h2 style="margin-top: 0; color: #555; background-color: #f2f2f2; padding: 5px;">Ship To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
                     <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
                     <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
