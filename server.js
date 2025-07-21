@@ -237,6 +237,39 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // NEW: Fetch company details to check approval status
+    let companyApproved = false;
+    let companyDenied = false;
+    if (user.company_id) {
+        const [companies] = await conn.execute("SELECT approved, denied FROM companies WHERE id = ?", [user.company_id]);
+        if (companies.length > 0) {
+            companyApproved = companies[0].approved;
+            companyDenied = companies[0].denied;
+            console.log(`[Login Route] Company status for user ${email}: Approved=${companyApproved}, Denied=${companyDenied}`);
+        } else {
+            console.warn(`[Login Route] Company ID ${user.company_id} not found for user ${email}. Treating as unapproved.`);
+            // If company not found, treat as unapproved for security
+            companyApproved = false;
+            companyDenied = false; // Ensure denied is also false if company not found
+        }
+    } else {
+        console.warn(`[Login Route] User ${email} has no company_id. Treating as unapproved.`);
+        companyApproved = false;
+        companyDenied = false;
+    }
+
+    // If company is not approved or is explicitly denied, prevent login
+    if (!companyApproved || companyDenied) {
+        console.log(`[Login Route] Company for user ${email} is awaiting approval or denied. Login rejected.`);
+        // Destroy session immediately if it was created during initial login attempt before company check
+        if (req.session.user) {
+            req.session.destroy((err) => {
+                if (err) console.error("Error destroying session after company approval check:", err);
+            });
+        }
+        return res.status(403).json({ error: "Company Awaiting Approval" }); // Specific message for frontend
+    }
+
     // Set user data in session
     req.session.user = { 
         id: user.id, 
@@ -262,6 +295,56 @@ app.post("/login", async (req, res) => {
     }
   }
 });
+
+// NEW ADMIN LOGIN ROUTE
+app.post("/admin-login", async (req, res) => {
+    const { email, password } = req.body;
+    let conn;
+    console.log(`[Admin Login Route] Attempting login for email: ${email}`);
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        console.log("[Admin Login Route] Database connection established.");
+
+        const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
+        console.log(`[Admin Login Route] Query result for user ${email}:`, users);
+
+        const user = users[0];
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            console.log("[Admin Login Route] Invalid credentials.");
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        // Check if the user has an admin role
+        if (user.role !== "admin") {
+            console.log(`[Admin Login Route] User ${email} is not an admin. Role: ${user.role}`);
+            return res.status(403).json({ error: "Access denied: admin only" });
+        }
+
+        // Set session variables for admin
+        req.session.user = { 
+            id: user.id, 
+            email: user.email, 
+            role: user.role, 
+            companyId: user.company_id, // Admins might also have a company_id
+            firstName: user.first_name,
+            lastName: user.last_name
+        };
+        
+        console.log(`[Admin Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
+        
+        res.json({ message: "Admin login successful", role: user.role });
+
+    } catch (err) {
+        console.error("Admin login error:", err);
+        res.status(500).json({ error: "Admin login failed due to server error" });
+    } finally {
+        if (conn) {
+            conn.end();
+            console.log("[Admin Login Route] Database connection closed.");
+        }
+    }
+});
+
 
 app.get("/user-profile", requireAuth, async (req, res) => { // Use requireAuth
   console.log("[User Profile Route] Route hit.");
@@ -316,7 +399,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Using direct parameter binding for the integer ID
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Re-added notes
+      "SELECT name, address1, city, state, zip, country, terms, discount, notes, approved, denied FROM companies WHERE id = ?", // Re-added notes, and added approved, denied
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
@@ -385,9 +468,9 @@ app.post("/register-company", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, ''] // Re-added notes value (empty string)
+      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Added approved and denied columns
+      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '', 0, 0] // Default new companies to not approved (0) and not denied (0)
     );
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId }); // Added id to response
   } catch (err) {
@@ -473,7 +556,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
-    const [companies] = await conn.execute("SELECT *, discount, notes FROM companies"); // Re-added notes in select
+    const [companies] = await conn.execute("SELECT *, discount, notes, approved, denied FROM companies"); // Re-added notes, and added approved, denied in select
     res.json(companies);
   } catch (err) {
     console.error("Failed to retrieve companies:", err);
@@ -531,9 +614,9 @@ app.post('/add-company', requireAdmin, async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
     const [result] = await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [name, logo, address1, city, state, zip, country, terms, discount, '']); // Re-added notes as empty string
+      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [name, logo, address1, city, state, zip, country, terms, discount, '', 0, 0]); // Re-added notes as empty string, and default approved/denied
     res.status(200).json({ message: "Company created", id: result.insertId }); // Added id to response
   } catch (err) {
     console.error("Failed to create company:", err);
@@ -569,7 +652,7 @@ app.get("/test-company-details", async (req, res) => {
     console.log("[Test Company Details] Database connection established.");
 
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Re-added notes
+      "SELECT name, address1, city, state, zip, country, terms, discount, notes, approved, denied FROM companies WHERE id = ?", // Re-added notes, and added approved, denied
       [testCompanyId]
     );
     console.log("[Test Company Details] Raw query result (companies array for hardcoded ID):", companies);
@@ -864,7 +947,7 @@ function generateOrderHtmlEmail(orderData) { // Reverted to original signature w
                     <h2 style="margin-top: 0; color: #555; background-color: #e0e0e0; padding: 5px;">Ship To:</h2>
                     <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
                     <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                    <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
+                    <p><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
                     <p><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
                     <p><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
                 </div>
@@ -1071,4 +1154,4 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
-}); 
+});
