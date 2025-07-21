@@ -6,14 +6,14 @@ const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
 const nodemailer = require("nodemailer");
-const os = require('os'); // NEW: Import os module
-const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp directory names
-const fs = require('fs/promises'); // NEW: For async file system operations
+const os = require('os'); // Import os module
+const { v4: uuidv4 } = require('uuid'); // Import uuid for unique temp directory names
+const fs = require('fs/promises'); // For async file system operations
 
-// NEW: Import puppeteer-extra and the stealth plugin
+// Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-// NEW: Import @sparticuz/chromium for Render compatibility
+// Import @sparticuz/chromium for Render compatibility
 const chromium = require('@sparticuz/chromium');
 
 // Apply the stealth plugin to puppeteer
@@ -39,16 +39,78 @@ process.on('unhandledRejection', (reason, promise) => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Database connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+// NEW: Import the MySQL session store
+const MySQLStore = require('express-mysql-session')(session);
+
+// Database connection configuration for direct MySQL2 connections
+const dbConnectionConfig = {
+    host: process.env.DB_HOST, // Ensure this is set in your .env (e.g., "192.254.232.38")
+    user: process.env.DB_USER, // Ensure this is set in your .env (e.g., "chicagostainless_admin")
+    password: process.env.DB_PASSWORD, // Ensure this is set in your .env
+    database: process.env.DB_NAME, // Ensure this is set in your .env (e.g., "chicagostainless_db")
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
-});
+};
+
+// Configuration for the express-mysql-session store
+const sessionStoreOptions = {
+    host: dbConnectionConfig.host,
+    user: dbConnectionConfig.user,
+    password: dbConnectionConfig.password,
+    database: dbConnectionConfig.database,
+    clearExpired: true,              // Automatically clear expired sessions
+    checkExpirationInterval: 900000, // 15 minutes
+    expiration: 86400000,            // 24 hours
+    createDatabaseTable: true,       // Whether to create the 'sessions' table
+    connectionLimit: 1               // Limit connections for the session store
+};
+
+// Configure the session store instance
+const sessionStore = new MySQLStore(sessionStoreOptions);
+
+// Allowed origins for CORS
+const allowedOrigins = [
+    "https://www.chicagostainless.com",
+    "https://checkout-backend-jvyx.onrender.com",
+    "http://localhost:5500", // For local development
+    "http://127.0.0.1:5500" // For local development
+];
+
+// CORS Configuration
+const corsOptions = {
+    origin: function (origin, callback) {
+        console.log(`[CORS Check] Request Origin: ${origin}`); // Log the incoming origin
+        if (!origin || allowedOrigins.includes(origin)) {
+            console.log(`[CORS Check] Origin ${origin} ALLOWED.`);
+            callback(null, true);
+        } else {
+            console.error(`[CORS Check] Origin ${origin} NOT ALLOWED.`);
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    credentials: true,
+    optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
+    allowedHeaders: ['Content-Type', 'Authorization'], // Explicitly allow headers
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // Explicitly list allowed methods
+};
+
+app.use(cors(corsOptions));
+app.use(express.json()); // For parsing application/json
+app.set("trust proxy", 1); // Essential for 'secure: true' cookies when behind a proxy/load balancer like Render
+
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || "supersecretkey", // Use a strong secret from .env
+    resave: false,
+    saveUninitialized: false,
+    store: sessionStore, // Use the MySQL session store
+    cookie: {
+        sameSite: "none",  // Required for cross-site cookies to be sent from different origins
+        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 
 // Nodemailer transporter setup
 const transporter = nodemailer.createTransport({
@@ -59,32 +121,16 @@ const transporter = nodemailer.createTransport({
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
     },
-});
-
-// Middleware
-app.use(cors({
-    origin: ["https://checkout-frontend-jvyx.onrender.com", "http://localhost:5500", "http://127.0.0.1:5500"], // Allow your frontend origin
-    credentials: true // Allow cookies to be sent
-}));
-app.use(express.json()); // For parsing application/json
-app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public' directory
-
-app.use(session({
-    secret: process.env.SESSION_SECRET || "supersecretkey", // Use a strong secret from .env
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    tls: {
+        rejectUnauthorized: false
     }
-}));
+});
 
 // Function to initialize database tables
 async function initializeDatabase() {
     let conn;
     try {
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig); // Use direct connection for schema ops
         console.log("Database connected for initialization.");
 
         // Create 'companies' table
@@ -153,6 +199,10 @@ async function initializeDatabase() {
         console.log("Table 'cart_items' ensured.");
 
         // Create 'orders' table
+        // NOTE: The 'orders' table schema in your submit-order route is different
+        // from the one defined here. I'm keeping this one as it's more aligned
+        // with typical e-commerce order structure. If you intend to use the
+        // schema from submit-order, this table definition will need adjustment.
         await conn.query(`
             CREATE TABLE IF NOT EXISTS orders (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -183,12 +233,12 @@ async function initializeDatabase() {
         `);
         console.log("Table 'order_items' ensured.");
 
-        // Create 'shipping_addresses' table
+        // Create 'shipping_addresses' table (renamed from shipto_addresses for consistency)
         await conn.query(`
             CREATE TABLE IF NOT EXISTS shipping_addresses (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 company_id INT NOT NULL,
-                name VARCHAR(255) NOT NULL, -- e.g., "Main Warehouse", "Branch Office"
+                name VARCHAR(255) NOT NULL, -- e.g., "Main Warehouse", "Branch Office" (Address Reference)
                 company_name VARCHAR(255), -- Optional: if different from billing company name
                 address1 TEXT NOT NULL,
                 city VARCHAR(100) NOT NULL,
@@ -201,7 +251,7 @@ async function initializeDatabase() {
         `);
         console.log("Table 'shipping_addresses' ensured.");
 
-        // NEW: Create 'settings' table for admin configurations
+        // Create 'settings' table for admin configurations
         await conn.query(`
             CREATE TABLE IF NOT EXISTS settings (
                 id INT PRIMARY KEY DEFAULT 1, -- Assuming only one row for admin settings
@@ -211,7 +261,7 @@ async function initializeDatabase() {
         `);
         console.log("Table 'settings' ensured.");
 
-        // NEW: Ensure there's always one row in the settings table
+        // Ensure there's always one row in the settings table
         await conn.query(`
             INSERT IGNORE INTO settings (id, po_email, registration_email) VALUES (1, NULL, NULL);
         `);
@@ -221,7 +271,7 @@ async function initializeDatabase() {
         console.error("Error initializing database:", err);
         process.exit(1); // Exit if database initialization fails
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 }
 
@@ -246,6 +296,48 @@ const isAuthenticated = (req, res, next) => {
     }
 };
 
+// Middleware for Company Access Authorization
+const authorizeCompanyAccess = async (req, res, next) => {
+    if (!req.session.userId) {
+        return res.status(401).json({ error: "Unauthorized: Login required" });
+    }
+
+    // Allow admins to access any company's data
+    if (req.session.role === "admin") {
+        return next();
+    }
+
+    const userCompanyId = req.session.companyId;
+
+    let requestedCompanyId = null;
+    if (req.params.companyId) {
+        requestedCompanyId = parseInt(req.params.companyId, 10);
+    } else if (req.body.companyId) {
+        requestedCompanyId = parseInt(req.body.companyId, 10);
+    } else if (req.params.id) { // For PUT/DELETE/SET_DEFAULT on /api/shipto/:id
+        let conn;
+        try {
+            conn = await mysql.createConnection(dbConnectionConfig);
+            const [rows] = await conn.execute("SELECT company_id FROM shipping_addresses WHERE id = ?", [req.params.id]);
+            if (rows.length > 0) {
+                requestedCompanyId = rows[0].company_id;
+            }
+        } catch (err) {
+            console.error("Error fetching company_id for address:", err);
+            return res.status(500).json({ error: "Server error while authorizing company access" });
+        } finally {
+            if (conn) conn.end();
+        }
+    }
+
+    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
+        return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+    }
+
+    next();
+};
+
+
 // --- Auth Routes ---
 
 app.post("/register", async (req, res) => {
@@ -257,7 +349,7 @@ app.post("/register", async (req, res) => {
             return res.status(400).json({ error: "Email, password, company name, and terms are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
 
         // Check if company already exists
         let [companies] = await conn.query("SELECT id FROM companies WHERE name = ?", [companyName]);
@@ -322,7 +414,7 @@ app.post("/register", async (req, res) => {
         console.error("Registration error:", err);
         res.status(500).json({ error: "Failed to register user." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -334,7 +426,7 @@ app.post("/login", async (req, res) => {
             return res.status(400).json({ error: "Email and password are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.query("SELECT u.*, c.approved, c.denied FROM users u JOIN companies c ON u.company_id = c.id WHERE u.email = ?", [email]);
 
         if (users.length === 0) {
@@ -368,7 +460,7 @@ app.post("/login", async (req, res) => {
         console.error("Login error:", err);
         res.status(500).json({ error: "Failed to log in." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -378,7 +470,7 @@ app.post("/logout", (req, res) => {
             console.error("Session destruction error:", err);
             return res.status(500).json({ error: "Failed to log out." });
         }
-        res.clearCookie('connect.sid'); // Clear session cookie
+        res.clearCookie('connect.sid', { sameSite: 'none', secure: process.env.NODE_ENV === 'production' }); // Clear session cookie with correct options
         res.status(200).json({ message: "Logged out successfully." });
     });
 });
@@ -404,7 +496,7 @@ app.post("/forgot-password", async (req, res) => {
             return res.status(400).json({ error: "Email is required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.query("SELECT id FROM users WHERE email = ?", [email]);
 
         if (users.length === 0) {
@@ -446,7 +538,7 @@ app.post("/forgot-password", async (req, res) => {
         console.error("Forgot password error:", err);
         res.status(500).json({ error: "Failed to process forgot password request." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -456,14 +548,14 @@ app.post("/forgot-password", async (req, res) => {
 app.get("/companies", isAdmin, async (req, res) => {
     let conn;
     try {
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [rows] = await conn.query("SELECT * FROM companies");
         res.status(200).json(rows);
     } catch (err) {
         console.error("Error fetching companies:", err);
         res.status(500).json({ error: "Failed to fetch companies." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -475,7 +567,7 @@ app.post("/add-company", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Company name and terms are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied]
@@ -488,7 +580,7 @@ app.post("/add-company", isAdmin, async (req, res) => {
         }
         res.status(500).json({ error: "Failed to add company." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -500,7 +592,7 @@ app.post("/edit-company", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Company ID, name, and terms are required for update." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "UPDATE companies SET name = ?, logo = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, terms = ?, discount = ?, notes = ?, approved = ?, denied = ? WHERE id = ?",
             [name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied, id]
@@ -517,7 +609,7 @@ app.post("/edit-company", isAdmin, async (req, res) => {
         }
         res.status(500).json({ error: "Failed to update company." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -529,7 +621,7 @@ app.post("/delete-company", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Company ID is required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         // The ON DELETE CASCADE in table definitions will handle associated users and shipping addresses
         const [result] = await conn.query("DELETE FROM companies WHERE id = ?", [id]);
 
@@ -541,7 +633,7 @@ app.post("/delete-company", isAdmin, async (req, res) => {
         console.error("Error deleting company:", err);
         res.status(500).json({ error: "Failed to delete company." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -550,14 +642,14 @@ app.get("/company-users/:companyId", isAdmin, async (req, res) => {
     let conn;
     try {
         const { companyId } = req.params;
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [rows] = await conn.query("SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE company_id = ?", [companyId]);
         res.status(200).json(rows);
     } catch (err) {
         console.error("Error fetching company users:", err);
         res.status(500).json({ error: "Failed to fetch company users." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -566,7 +658,7 @@ app.get("/user/:userId", isAdmin, async (req, res) => {
     let conn;
     try {
         const { userId } = req.params;
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.query("SELECT id, company_id, email, first_name, last_name, phone, role FROM users WHERE id = ?", [userId]);
         if (users.length === 0) {
             return res.status(404).json({ error: "User not found." });
@@ -576,7 +668,7 @@ app.get("/user/:userId", isAdmin, async (req, res) => {
         console.error("Error fetching user:", err);
         res.status(500).json({ error: "Failed to fetch user." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -588,7 +680,7 @@ app.post("/add-user", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Company ID, email, and password are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [existingUsers] = await conn.query("SELECT id FROM users WHERE email = ?", [email]);
         if (existingUsers.length > 0) {
             return res.status(409).json({ error: "User with this email already exists." });
@@ -604,7 +696,7 @@ app.post("/add-user", isAdmin, async (req, res) => {
         console.error("Error adding user:", err);
         res.status(500).json({ error: "Failed to add user." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -616,7 +708,7 @@ app.post("/edit-user", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "User ID, company ID, and email are required for update." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
 
         // Check for duplicate email if email is being changed
         const [existingUserWithEmail] = await conn.query("SELECT id FROM users WHERE email = ? AND id != ?", [email, id]);
@@ -643,7 +735,7 @@ app.post("/edit-user", isAdmin, async (req, res) => {
         console.error("Error updating user:", err);
         res.status(500).json({ error: "Failed to update user." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -655,7 +747,7 @@ app.post("/delete-user", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "User ID is required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query("DELETE FROM users WHERE id = ?", [id]);
 
         if (result.affectedRows === 0) {
@@ -666,17 +758,17 @@ app.post("/delete-user", isAdmin, async (req, res) => {
         console.error("Error deleting user:", err);
         res.status(500).json({ error: "Failed to delete user." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
 // --- Admin Settings Endpoints ---
 
-// NEW: GET route to fetch admin settings
+// GET route to fetch admin settings
 app.get("/admin/settings", isAdmin, async (req, res) => {
     let conn;
     try {
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         // Fetch the single row for settings (assuming id=1)
         const [settings] = await conn.query("SELECT po_email, registration_email FROM settings WHERE id = 1");
 
@@ -689,17 +781,17 @@ app.get("/admin/settings", isAdmin, async (req, res) => {
         console.error("Error fetching admin settings:", err);
         res.status(500).json({ error: "Failed to fetch admin settings." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
-// NEW: POST route to save/update admin settings
+// POST route to save/update admin settings
 app.post("/admin/settings", isAdmin, async (req, res) => {
     let conn;
     try {
         const { po_email, registration_email } = req.body;
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
 
         // Update the single row for settings (assuming id=1)
         const [result] = await conn.query(
@@ -720,7 +812,7 @@ app.post("/admin/settings", isAdmin, async (req, res) => {
         console.error("Error saving admin settings:", err);
         res.status(500).json({ error: "Failed to save admin settings." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -729,14 +821,14 @@ app.post("/admin/settings", isAdmin, async (req, res) => {
 app.get("/products", isAuthenticated, async (req, res) => {
     let conn;
     try {
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [rows] = await conn.query("SELECT * FROM products");
         res.status(200).json(rows);
     } catch (err) {
         console.error("Error fetching products:", err);
         res.status(500).json({ error: "Failed to fetch products." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -748,7 +840,7 @@ app.post("/products", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Product name and price are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "INSERT INTO products (name, description, price, image_url, category, stock_quantity) VALUES (?, ?, ?, ?, ?, ?)",
             [name, description, price, imageUrl, category, stockQuantity]
@@ -758,7 +850,7 @@ app.post("/products", isAdmin, async (req, res) => {
         console.error("Error adding product:", err);
         res.status(500).json({ error: "Failed to add product." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -771,7 +863,7 @@ app.put("/products/:id", isAdmin, async (req, res) => {
             return res.status(400).json({ error: "Product name and price are required for update." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, category = ?, stock_quantity = ? WHERE id = ?",
             [name, description, price, imageUrl, category, stockQuantity, id]
@@ -785,7 +877,7 @@ app.put("/products/:id", isAdmin, async (req, res) => {
         console.error("Error updating product:", err);
         res.status(500).json({ error: "Failed to update product." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -793,7 +885,7 @@ app.delete("/products/:id", isAdmin, async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query("DELETE FROM products WHERE id = ?", [id]);
 
         if (result.affectedRows === 0) {
@@ -804,7 +896,7 @@ app.delete("/products/:id", isAdmin, async (req, res) => {
         console.error("Error deleting product:", err);
         res.status(500).json({ error: "Failed to delete product." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -813,7 +905,7 @@ app.get("/cart", isAuthenticated, async (req, res) => {
     let conn;
     try {
         const userId = req.session.userId;
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [cartItems] = await conn.query(`
             SELECT ci.product_id, ci.quantity, p.name, p.price, p.image_url
             FROM cart_items ci
@@ -825,7 +917,7 @@ app.get("/cart", isAuthenticated, async (req, res) => {
         console.error("Error fetching cart items:", err);
         res.status(500).json({ error: "Failed to fetch cart items." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
@@ -839,7 +931,7 @@ app.post("/cart", isAuthenticated, async (req, res) => {
             return res.status(400).json({ error: "Product ID and a valid quantity are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction();
 
         // Check if product exists and has enough stock
@@ -898,7 +990,7 @@ app.put("/cart/:productId", isAuthenticated, async (req, res) => {
             return res.status(400).json({ error: "Valid quantity is required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         await conn.beginTransaction();
 
         // Check if product exists and has enough stock
@@ -912,6 +1004,7 @@ app.put("/cart/:productId", isAuthenticated, async (req, res) => {
         if (quantity > availableStock) {
             await conn.rollback();
             return res.status(400).json({ error: `Not enough stock. Available: ${availableStock}` });
+
         }
 
         const [result] = await conn.query(
@@ -942,7 +1035,7 @@ app.delete("/cart/:productId", isAuthenticated, async (req, res) => {
         const userId = req.session.userId;
         const { productId } = req.params;
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "DELETE FROM cart_items WHERE user_id = ? AND product_id = ?",
             [userId, productId]
@@ -962,28 +1055,38 @@ app.delete("/cart/:productId", isAuthenticated, async (req, res) => {
 
 // --- Order Endpoints ---
 app.post("/submit-order", isAuthenticated, async (req, res) => {
+    const userId = req.session.userId;
+    const companyId = req.session.companyId; // Get companyId from session
+    const userEmail = req.session.email; // Get user's email from session (assuming it's stored)
+
+    const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items, terms } = req.body;
+
+    console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
+
+    // Validate required fields based on the 'orders' table schema provided
+    if (!poNumber || !shippingAddressId || !items || items.length === 0) {
+        console.error("Validation Error: Missing required order fields or empty cart.", { poNumber, shippingAddressId, items });
+        return res.status(400).json({ error: "PO Number, Shipping Address, and items are required." });
+    }
+
     let conn;
+    let browser;
+    let pdfBuffer = null;
+    let tempDir = null;
+
     try {
-        const userId = req.session.userId;
-        const companyId = req.session.companyId;
-        const { poNumber, shippingAddressId } = req.body;
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.beginTransaction(); // Start transaction
 
-        if (!poNumber || !shippingAddressId) {
-            return res.status(400).json({ error: "PO Number and Shipping Address are required." });
-        }
-
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-
-        // Fetch cart items
-        const [cartItems] = await conn.query(`
+        // Fetch cart items to calculate total amount and ensure data consistency
+        const [cartItemsFromDB] = await conn.query(`
             SELECT ci.product_id, ci.quantity, p.price, p.name as product_name
             FROM cart_items ci
             JOIN products p ON ci.product_id = p.id
             WHERE ci.user_id = ?
         `, [userId]);
 
-        if (cartItems.length === 0) {
+        if (cartItemsFromDB.length === 0) {
             await conn.rollback();
             return res.status(400).json({ error: "Cart is empty." });
         }
@@ -993,7 +1096,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
         const companyDiscount = companies.length > 0 ? (companies[0].discount / 100) : 0;
 
         let totalAmount = 0;
-        for (const item of cartItems) {
+        for (const item of cartItemsFromDB) {
             totalAmount += item.quantity * item.price;
         }
 
@@ -1003,13 +1106,13 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
 
         // Insert into orders table
         const [orderResult] = await conn.query(
-            "INSERT INTO orders (user_id, company_id, total_amount, po_number, shipping_address_id) VALUES (?, ?, ?, ?, ?)",
-            [userId, companyId, totalAmount, poNumber, shippingAddressId]
+            "INSERT INTO orders (user_id, company_id, total_amount, status, po_number, shipping_address_id) VALUES (?, ?, ?, ?, ?, ?)",
+            [userId, companyId, totalAmount, 'Pending', poNumber, shippingAddressId]
         );
         const orderId = orderResult.insertId;
 
         // Insert into order_items and update product stock
-        for (const item of cartItems) {
+        for (const item of cartItemsFromDB) {
             await conn.query(
                 "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)",
                 [orderId, item.product_id, item.quantity, item.price]
@@ -1023,12 +1126,17 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
         // Clear the cart
         await conn.query("DELETE FROM cart_items WHERE user_id = ?", [userId]);
 
-        await conn.commit();
+        await conn.commit(); // Commit the transaction
 
         // --- PDF Generation and Email Notification ---
-        let browser;
-        let pdfBuffer = null;
-        let tempDir = null;
+        // Fetch company name for the email subject
+        let companyName = "Unknown Company";
+        if (companyId) {
+            const [companyRows] = await conn.query("SELECT name FROM companies WHERE id = ?", [companyId]);
+            if (companyRows.length > 0) {
+                companyName = companyRows[0].name;
+            }
+        }
 
         try {
             // Determine the executable path for Chromium
@@ -1063,7 +1171,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
                         </tr>
                     </thead>
                     <tbody>
-                        ${cartItems.map(item => `
+                        ${cartItemsFromDB.map(item => `
                             <tr>
                                 <td>${item.product_name}</td>
                                 <td>${item.quantity}</td>
@@ -1105,7 +1213,7 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
         const mailOptions = {
             from: process.env.EMAIL_USER,
             to: poEmailRecipient, // Send to the configured PO email
-            subject: `New Purchase Order #${poNumber} (Order ID: ${orderId})`,
+            subject: `${companyName} - PO# ${poNumber} (Order ID: ${orderId})`,
             html: `
                 <p>A new purchase order has been submitted:</p>
                 <ul>
@@ -1151,42 +1259,32 @@ app.post("/submit-order", isAuthenticated, async (req, res) => {
 
 // --- Shipping Address Endpoints ---
 // Get shipping addresses for a company
-app.get("/api/shipto/:companyId", isAuthenticated, async (req, res) => {
+app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         const { companyId } = req.params;
-        // Ensure the logged-in user is associated with this company, or is an admin
-        if (req.session.role !== 'admin' && req.session.companyId !== parseInt(companyId, 10)) {
-            return res.status(403).json({ error: "Access denied to shipping addresses for this company." });
-        }
-
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [addresses] = await conn.query("SELECT * FROM shipping_addresses WHERE company_id = ?", [companyId]);
         res.status(200).json(addresses);
     } catch (err) {
         console.error("Error fetching shipping addresses:", err);
         res.status(500).json({ error: "Failed to fetch shipping addresses." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
 // Add a new shipping address
-app.post("/api/shipto", isAuthenticated, async (req, res) => {
+app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         const { companyId, name, company_name, address1, city, state, zip, country } = req.body;
         
-        // Ensure the logged-in user is associated with this company, or is an admin
-        if (req.session.role !== 'admin' && req.session.companyId !== parseInt(companyId, 10)) {
-            return res.status(403).json({ error: "Unauthorized to add address for this company." });
-        }
-
         if (!companyId || !name || !address1 || !city || !state || !zip) {
             return res.status(400).json({ error: "Company ID, address reference, address, city, state, and zip are required." });
         }
 
-        conn = await pool.getConnection();
+        conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.query(
             "INSERT INTO shipping_addresses (company_id, name, company_name, address1, city, state, zip, country) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [companyId, name, company_name, address1, city, state, zip, country]
@@ -1196,12 +1294,12 @@ app.post("/api/shipto", isAuthenticated, async (req, res) => {
         console.error("Error adding shipping address:", err);
         res.status(500).json({ error: "Failed to add shipping address." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
 // Update a shipping address
-app.put("/api/shipto/:id", isAuthenticated, async (req, res) => {
+app.put("/api/shipto/:id", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
@@ -1211,19 +1309,7 @@ app.put("/api/shipto/:id", isAuthenticated, async (req, res) => {
             return res.status(400).json({ error: "Address reference, address, city, state, and zip are required for update." });
         }
 
-        conn = await pool.getConnection();
-
-        // First, get the company_id of the address to ensure authorization
-        const [addresses] = await conn.query("SELECT company_id FROM shipping_addresses WHERE id = ?", [id]);
-        if (addresses.length === 0) {
-            return res.status(404).json({ error: "Shipping address not found." });
-        }
-        const addressCompanyId = addresses[0].company_id;
-
-        // Ensure the logged-in user is associated with this company, or is an admin
-        if (req.session.role !== 'admin' && req.session.companyId !== addressCompanyId) {
-            return res.status(403).json({ error: "Unauthorized to update this address." });
-        }
+        conn = await mysql.createConnection(dbConnectionConfig);
 
         const [result] = await conn.query(
             "UPDATE shipping_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?",
@@ -1238,29 +1324,17 @@ app.put("/api/shipto/:id", isAuthenticated, async (req, res) => {
         console.error("Error updating shipping address:", err);
         res.status(500).json({ error: "Failed to update shipping address." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
 // Delete a shipping address
-app.delete("/api/shipto/:id", isAuthenticated, async (req, res) => {
+app.delete("/api/shipto/:id", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         const { id } = req.params;
 
-        conn = await pool.getConnection();
-
-        // First, get the company_id of the address to ensure authorization
-        const [addresses] = await conn.query("SELECT company_id FROM shipping_addresses WHERE id = ?", [id]);
-        if (addresses.length === 0) {
-            return res.status(404).json({ error: "Shipping address not found." });
-        }
-        const addressCompanyId = addresses[0].company_id;
-
-        // Ensure the logged-in user is associated with this company, or is an admin
-        if (req.session.role !== 'admin' && req.session.companyId !== addressCompanyId) {
-            return res.status(403).json({ error: "Unauthorized to delete this address." });
-        }
+        conn = await mysql.createConnection(dbConnectionConfig);
 
         const [result] = await conn.query("DELETE FROM shipping_addresses WHERE id = ?", [id]);
 
@@ -1272,12 +1346,12 @@ app.delete("/api/shipto/:id", isAuthenticated, async (req, res) => {
         console.error("Error deleting shipping address:", err);
         res.status(500).json({ error: "Failed to delete shipping address." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
 // Set a shipping address as default for a company
-app.put("/api/shipto/:id/set-default", isAuthenticated, async (req, res) => {
+app.put("/api/shipto/:id/set-default", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         const { id } = req.params; // The ID of the address to make default
@@ -1287,14 +1361,8 @@ app.put("/api/shipto/:id/set-default", isAuthenticated, async (req, res) => {
             return res.status(400).json({ error: "Company ID is required." });
         }
 
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-
-        // Ensure the logged-in user is associated with this company, or is an admin
-        if (req.session.role !== 'admin' && req.session.companyId !== parseInt(companyId, 10)) {
-            await conn.rollback();
-            return res.status(403).json({ error: "Unauthorized to modify addresses for this company." });
-        }
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.beginTransaction(); // Start a transaction
 
         // 1. Set all other addresses for this company to not default
         await conn.query("UPDATE shipping_addresses SET is_default = FALSE WHERE company_id = ?", [companyId]);
@@ -1310,14 +1378,14 @@ app.put("/api/shipto/:id/set-default", isAuthenticated, async (req, res) => {
             return res.status(404).json({ error: "Shipping address not found or does not belong to the specified company." });
         }
 
-        await conn.commit();
+        await conn.commit(); // Commit the transaction
         res.status(200).json({ message: "Shipping address set as default successfully!" });
     } catch (err) {
         if (conn) await conn.rollback();
         console.error("Error setting default shipping address:", err);
         res.status(500).json({ error: "Failed to set default shipping address." });
     } finally {
-        if (conn) conn.release();
+        if (conn) conn.end();
     }
 });
 
