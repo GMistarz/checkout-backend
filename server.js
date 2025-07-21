@@ -435,6 +435,56 @@ app.post("/register-user", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
     );
+    
+    // --- NEW: Email Notification for New User Registration ---
+    let registrationEmailRecipient = "Greg@ChicagoStainless.com"; // Default fallback
+    let companyName = "Unknown Company";
+
+    try {
+        // Fetch registration email from admin settings
+        const [settingsRows] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
+        if (settingsRows.length > 0 && settingsRows[0].registration_email) {
+            registrationEmailRecipient = settingsRows[0].registration_email;
+        }
+
+        // Fetch company name for the email
+        const [companyRows] = await conn.execute("SELECT name FROM companies WHERE id = ?", [companyId]);
+        if (companyRows.length > 0) {
+            companyName = companyRows[0].name;
+        }
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: registrationEmailRecipient,
+            subject: `New User Registration Request: ${firstName} ${lastName} from ${companyName}`,
+            html: `
+                <p>Hello Admin,</p>
+                <p>A new user has registered through the checkout page:</p>
+                <ul>
+                    <li><strong>Name:</strong> ${firstName} ${lastName}</li>
+                    <li><strong>Email:</strong> ${email}</li>
+                    <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
+                    <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
+                    <li><strong>Role:</strong> ${role}</li>
+                </ul>
+                <p>Please review their company's approval status in the admin dashboard.</p>
+                <p>Thank you.</p>
+            `
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending new user registration email:", error);
+            } else {
+                console.log("New user registration email sent:", info.response);
+            }
+        });
+    } catch (emailErr) {
+        console.error("Error fetching registration email recipient or sending email:", emailErr);
+        // Do not block registration success if email sending fails
+    }
+    // --- END NEW: Email Notification ---
+
     res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
     console.error("Failed to register user:", err);
