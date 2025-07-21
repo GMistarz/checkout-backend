@@ -936,6 +936,77 @@ app.post("/admin/settings", requireAdmin, async (req, res) => {
     }
 });
 
+// NEW: Endpoint to send company approval email to the user
+app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
+    let conn;
+    try {
+        const { companyId } = req.body;
+
+        if (!companyId) {
+            return res.status(400).json({ error: "Company ID is required." });
+        }
+
+        conn = await mysql.createConnection(dbConnectionConfig);
+
+        // 1. Fetch company details to ensure it's approved
+        const [companyRows] = await conn.execute("SELECT name, approved FROM companies WHERE id = ?", [companyId]);
+        if (companyRows.length === 0) {
+            return res.status(404).json({ error: "Company not found." });
+        }
+        const company = companyRows[0];
+
+        if (!company.approved) {
+            return res.status(400).json({ error: "Company is not yet approved. Cannot send approval email." });
+        }
+
+        // 2. Fetch the email of a user associated with this company
+        // For simplicity, we'll take the first user found for this company.
+        const [userRows] = await conn.execute("SELECT email, first_name FROM users WHERE company_id = ? LIMIT 1", [companyId]);
+        if (userRows.length === 0) {
+            return res.status(404).json({ error: "No users found for this company to send an email to." });
+        }
+        const userEmail = userRows[0].email;
+        const userName = userRows[0].first_name || "Valued Customer"; // Use first name if available
+
+        if (!process.env.EMAIL_USER) {
+            console.error("EMAIL_USER environment variable is not set. Cannot send email.");
+            return res.status(500).json({ error: "Email sender not configured on server." });
+        }
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: userEmail,
+            subject: `Your Company Registration for ${company.name} Has Been Approved!`,
+            html: `
+                <p>Dear ${userName},</p>
+                <p>We are pleased to inform you that your company registration for <strong>${company.name}</strong> has been officially approved!</p>
+                <p>You can now log in to your account and start placing orders.</p>
+                <p>Login Page: <a href="${process.env.FRONTEND_URL}/">${process.env.FRONTEND_URL}/</a></p>
+                <p>If you have any questions, please do not hesitate to contact us.</p>
+                <p>Thank you for choosing Chicago Stainless Equipment, Inc.</p>
+                <p>Sincerely,</p>
+                <p>The Chicago Stainless Equipment Team</p>
+            `,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending company approval email:", error);
+                return res.status(500).json({ error: "Failed to send approval email." });
+            } else {
+                console.log("Company approval email sent:", info.response);
+                res.status(200).json({ message: "Approval email sent successfully to the user!" });
+            }
+        });
+
+    } catch (err) {
+        console.error("Error in /admin/send-approval-email:", err);
+        res.status(500).json({ error: "Server error while sending approval email." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 
 // Helper function to generate HTML for the order email
 function generateOrderHtmlEmail(orderData) {
