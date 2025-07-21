@@ -599,9 +599,28 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
+    // Start a transaction to ensure atomicity
+    await conn.beginTransaction();
+
+    // Delete related records in 'users' table first
+    await conn.execute("DELETE FROM users WHERE company_id = ?", [id]);
+    console.log(`Deleted users associated with company ID: ${id}`);
+
+    // Delete related records in 'shipto_addresses' table
+    await conn.execute("DELETE FROM shipto_addresses WHERE company_id = ?", [id]);
+    console.log(`Deleted shipping addresses associated with company ID: ${id}`);
+
+    // Now delete the company
     await conn.execute("DELETE FROM companies WHERE id = ?", [id]); 
-    res.json({ message: "Company deleted" });
+    console.log(`Deleted company with ID: ${id}`);
+
+    await conn.commit(); // Commit the transaction
+    res.json({ message: "Company and associated data deleted" });
   } catch (err) {
+    if (conn) {
+      await conn.rollback(); // Rollback on error
+      console.error("Transaction rolled back due to error.");
+    }
     console.error("Failed to delete company:", err);
     res.status(500).json({ error: "Failed to delete company" });
   } finally {
@@ -1171,6 +1190,34 @@ async function initializeDatabase() {
         conn = await mysql.createConnection(dbConnectionConfig);
         console.log("Database connection for initialization established.");
 
+        // Ensure tables are InnoDB for foreign key support
+        // Drop foreign key constraints if they exist before dropping tables or re-creating
+        // This helps in case schema changes are needed or constraints were misconfigured
+        
+        // --- Drop existing foreign keys for 'users' table ---
+        try {
+            await conn.execute(`
+                ALTER TABLE users DROP FOREIGN KEY users_ibfk_1;
+            `);
+            console.log("Dropped existing foreign key 'users_ibfk_1' from 'users' table.");
+        } catch (error) {
+            if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') { // Ignore error if key doesn't exist
+                console.warn("Could not drop foreign key 'users_ibfk_1' (it might not exist or is already dropped):", error.message);
+            }
+        }
+
+        // --- Drop existing foreign keys for 'shipto_addresses' table ---
+        try {
+            await conn.execute(`
+                ALTER TABLE shipto_addresses DROP FOREIGN KEY shipto_addresses_ibfk_1;
+            `);
+            console.log("Dropped existing foreign key 'shipto_addresses_ibfk_1' from 'shipto_addresses' table.");
+        } catch (error) {
+            if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') { // Ignore error if key doesn't exist
+                console.warn("Could not drop foreign key 'shipto_addresses_ibfk_1' (it might not exist or is already dropped):", error.message);
+            }
+        }
+
         // Create 'companies' table
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS companies (
@@ -1187,7 +1234,7 @@ async function initializeDatabase() {
                 notes TEXT,
                 approved BOOLEAN DEFAULT FALSE,
                 denied BOOLEAN DEFAULT FALSE
-            );
+            ) ENGINE=InnoDB;
         `);
         console.log("'companies' table checked/created.");
 
@@ -1201,11 +1248,24 @@ async function initializeDatabase() {
                 phone VARCHAR(50),
                 role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
                 password VARCHAR(255) NOT NULL,
-                company_id INT,
-                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
-            );
+                company_id INT
+            ) ENGINE=InnoDB;
         `);
         console.log("'users' table checked/created.");
+
+        // Add foreign key constraint for 'users' table with ON DELETE CASCADE
+        try {
+            await conn.execute(`
+                ALTER TABLE users
+                ADD CONSTRAINT users_ibfk_1
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+            `);
+            console.log("Added foreign key 'users_ibfk_1' with ON DELETE CASCADE to 'users' table.");
+        } catch (error) {
+            if (error.code !== 'ER_DUP_KEYNAME') { // Ignore error if constraint already exists
+                console.warn("Could not add foreign key 'users_ibfk_1' (it might already exist):", error.message);
+            }
+        }
 
         // Create 'shipto_addresses' table
         await conn.execute(`
@@ -1219,11 +1279,24 @@ async function initializeDatabase() {
                 state VARCHAR(255) NOT NULL,
                 zip VARCHAR(20) NOT NULL,
                 country VARCHAR(255),
-                is_default BOOLEAN DEFAULT FALSE,
-                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
-            );
+                is_default BOOLEAN DEFAULT FALSE
+            ) ENGINE=InnoDB;
         `);
         console.log("'shipto_addresses' table checked/created.");
+
+        // Add foreign key constraint for 'shipto_addresses' table with ON DELETE CASCADE
+        try {
+            await conn.execute(`
+                ALTER TABLE shipto_addresses
+                ADD CONSTRAINT shipto_addresses_ibfk_1
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+            `);
+            console.log("Added foreign key 'shipto_addresses_ibfk_1' with ON DELETE CASCADE to 'shipto_addresses' table.");
+        } catch (error) {
+            if (error.code !== 'ER_DUP_KEYNAME') { // Ignore error if constraint already exists
+                console.warn("Could not add foreign key 'shipto_addresses_ibfk_1' (it might already exist):", error.message);
+            }
+        }
 
         // Create 'orders' table
         await conn.execute(`
@@ -1237,7 +1310,7 @@ async function initializeDatabase() {
                 carrierAccount VARCHAR(255),
                 items JSON NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
+            ) ENGINE=InnoDB;
         `);
         console.log("'orders' table checked/created.");
 
@@ -1247,7 +1320,7 @@ async function initializeDatabase() {
                 id INT PRIMARY KEY DEFAULT 1,
                 po_email VARCHAR(255),
                 registration_email VARCHAR(255)
-            );
+            ) ENGINE=InnoDB;
         `);
         console.log("'admin_settings' table checked/created.");
 
