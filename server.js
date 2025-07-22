@@ -316,8 +316,9 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
 
     console.log("[User Company Details] Fetching specific company details for ID:", userCompanyId);
     // Using direct parameter binding for the integer ID
+    // MODIFIED: Added approved and denied columns to the SELECT statement
     const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes FROM companies WHERE id = ?", // Re-added notes
+      "SELECT name, address1, city, state, zip, country, terms, discount, notes, approved, denied FROM companies WHERE id = ?",
       [userCompanyId]
     );
     console.log("[User Company Details] Raw query result (companies array for specific ID):", companies); // Log the actual result
@@ -596,6 +597,7 @@ app.post('/add-company', requireAdmin, async (req, res) => {
 
 app.post("/delete-company", requireAdmin, async (req, res) => {
   const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "Missing user ID" });
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig); // Use dbConnectionConfig here
@@ -936,77 +938,6 @@ app.post("/admin/settings", requireAdmin, async (req, res) => {
     }
 });
 
-// NEW: Endpoint to send company approval email to the user
-app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
-    let conn;
-    try {
-        const { companyId } = req.body;
-
-        if (!companyId) {
-            return res.status(400).json({ error: "Company ID is required." });
-        }
-
-        conn = await mysql.createConnection(dbConnectionConfig);
-
-        // 1. Fetch company details to ensure it's approved
-        const [companyRows] = await conn.execute("SELECT name, approved FROM companies WHERE id = ?", [companyId]);
-        if (companyRows.length === 0) {
-            return res.status(404).json({ error: "Company not found." });
-        }
-        const company = companyRows[0];
-
-        if (!company.approved) {
-            return res.status(400).json({ error: "Company is not yet approved. Cannot send approval email." });
-        }
-
-        // 2. Fetch the email of a user associated with this company
-        // For simplicity, we'll take the first user found for this company.
-        const [userRows] = await conn.execute("SELECT email, first_name FROM users WHERE company_id = ? LIMIT 1", [companyId]);
-        if (userRows.length === 0) {
-            return res.status(404).json({ error: "No users found for this company to send an email to." });
-        }
-        const userEmail = userRows[0].email;
-        const userName = userRows[0].first_name || "Valued Customer"; // Use first name if available
-
-        if (!process.env.EMAIL_USER) {
-            console.error("EMAIL_USER environment variable is not set. Cannot send email.");
-            return res.status(500).json({ error: "Email sender not configured on server." });
-        }
-
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: userEmail,
-            subject: `Your Company Registration for ${company.name} Has Been Approved!`,
-            html: `
-                <p>Dear ${userName},</p>
-                <p>We are pleased to inform you that your company registration for <strong>${company.name}</strong> has been officially approved!</p>
-                <p>You can now log in to your account and start placing orders.</p>
-                <p>Login Page: <a href="${process.env.FRONTEND_URL}/">${process.env.FRONTEND_URL}/</a></p>
-                <p>If you have any questions, please do not hesitate to contact us.</p>
-                <p>Thank you for choosing Chicago Stainless Equipment, Inc.</p>
-                <p>Sincerely,</p>
-                <p>The Chicago Stainless Equipment Team</p>
-            `,
-        };
-
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending company approval email:", error);
-                return res.status(500).json({ error: "Failed to send approval email." });
-            } else {
-                console.log("Company approval email sent:", info.response);
-                res.status(200).json({ message: "Approval email sent successfully to the user!" });
-            }
-        });
-
-    } catch (err) {
-        console.error("Error in /admin/send-approval-email:", err);
-        res.status(500).json({ error: "Server error while sending approval email." });
-    } finally {
-        if (conn) conn.end();
-    }
-});
-
 
 // Helper function to generate HTML for the order email
 function generateOrderHtmlEmail(orderData) {
@@ -1159,7 +1090,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(items)]
+            [userEmail, poNumber, billingAddress, shippingAddress, carrierAccount, shippingMethod, JSON.stringify(items)]
         );
         const orderId = orderResult.insertId;
 
@@ -1265,7 +1196,7 @@ async function initializeDatabase() {
         // Drop foreign key constraints if they exist before dropping tables or re-creating
         // This helps in case schema changes are needed or constraints were misconfigured
         
-        // --- Drop existing foreign keys for 'users' table ---
+        // --- Drop existing foreign key for 'users' table ---
         try {
             await conn.execute(`
                 ALTER TABLE users DROP FOREIGN KEY users_ibfk_1;
@@ -1277,7 +1208,7 @@ async function initializeDatabase() {
             }
         }
 
-        // --- Drop existing foreign keys for 'shipto_addresses' table ---
+        // --- Drop existing foreign key for 'shipto_addresses' table ---
         try {
             await conn.execute(`
                 ALTER TABLE shipto_addresses DROP FOREIGN KEY shipto_addresses_ibfk_1;
@@ -1361,6 +1292,7 @@ async function initializeDatabase() {
                 ALTER TABLE shipto_addresses
                 ADD CONSTRAINT shipto_addresses_ibfk_1
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
+
             `);
             console.log("Added foreign key 'shipto_addresses_ibfk_1' with ON DELETE CASCADE to 'shipto_addresses' table.");
         } catch (error) {
