@@ -1046,8 +1046,8 @@ function generateOrderHtmlEmail(orderData) {
     return `
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
             <div style="text-align: center; margin-bottom: 20px;">
-                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
-                <h1 style="color: #333; margin-top: 10px; margin-bottom: 5px;">CSE WEBSITE ORDER</h1>
+                <h1 style="font-size: 28px; color: #333; margin-top: 0; margin-bottom: 5px; letter-spacing: 2px;">CSE</h1>
+                <h2 style="font-size: 22px; color: #555; margin-top: 0; margin-bottom: 5px;">CSE WEBSITE ORDER</h2>
                 <p style="font-size: 14px; color: #666; margin-top: 0;">Order details:</p>
             </div>
 
