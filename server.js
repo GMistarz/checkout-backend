@@ -1045,42 +1045,32 @@ function generateOrderHtmlEmail(orderData) {
 
     return `
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-                <tr>
-                    <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
-                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
-                    </td>
-                    <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
-                        <h1 style="font-size: 22px; color: #555; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
-                    </td>
-                </tr>
-            </table>
+            <div style="text-align: center; margin-bottom: 20px;">
+                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
+                <h1 style="color: #333;">Order Information</h1>
+            </div>
+            
+            <p>Order details:</p>
 
-            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Billed To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.billingAddress}</p>
+                    <p><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                    <p><strong>PO#:</strong> ${orderData.poNumber}</p>
+                    <p><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                </div>
+                <div style="flex: 1; min-width: 300px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                    <h2 style="margin-top: 0; color: #555;">Ship To:</h2>
+                    <p style="white-space: pre-wrap;">${orderData.shippingAddress}</p>
+                    <p><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                    <p><strong>Tag#:</strong> ${orderData.tag || 'N/A'}</p>
+                    <p><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
+                    <p><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                </div>
+            </div>
 
-            <p style="font-size: 14px; color: #666; margin: 0 0 15px 0;">Order details:</p>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #555; font-size: 16px; font-weight: bold; margin-bottom: 5px;">Bill To:</h2>
-                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4;">${orderData.billingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px;"><strong>PO#:</strong> ${orderData.poNumber}</p>
-                    </td>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #555; font-size: 16px; font-weight: bold; margin-bottom: 5px;">Ship To:</h2>
-                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4;">${orderData.shippingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
-                    </td>
-                </tr>
-            </table>
-
-            <h2 style="color: #555; font-size: 20px;">Order Summary</h2>
+            <h2 style="color: #555;">Order Summary</h2>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
@@ -1095,8 +1085,8 @@ function generateOrderHtmlEmail(orderData) {
                     ${itemsHtml}
                 </tbody>
             </table>
-            <p style="font-weight: bold; text-align: right; margin-bottom: 5px;">Item Count: ${totalQuantity}</p>
-            <p style="font-weight: bold; text-align: right; margin-top: 0;">Total Price: $${totalPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right;">Item Count: ${totalQuantity}</p>
+            <p style="font-weight: bold; text-align: right;">Total Price: $${totalPrice.toFixed(2)}</p>
 
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
