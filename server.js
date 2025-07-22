@@ -1020,14 +1020,14 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 function generateOrderHtmlEmail(orderData) {
     let itemsHtml = orderData.items.map(item => `
         <tr>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000;">${item.quantity}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000;">
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
                 <strong>${item.partNo}</strong><br>
                 <small>${item.description}</small>
             </td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000;">$${item.netPrice.toFixed(2)}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000;">$${item.lineTotal.toFixed(2)}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000;">${item.note || ''}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toFixed(2)}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">${item.note || ''}</td>
         </tr>
     `).join('');
 
