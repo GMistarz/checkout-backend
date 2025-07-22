@@ -1,6 +1,6 @@
 require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
-const cors = require = require("cors");
+const cors = require("cors"); // CORRECTED: Removed the extra ' = require'
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
@@ -974,7 +974,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         }
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: process.env.EMAIL_USER, // Changed to use the authenticated email user for better deliverability
             to: userEmail,
             subject: `Your Company Registration for ${company.name} Has Been Approved!`,
             html: `
@@ -1285,7 +1285,6 @@ async function initializeDatabase() {
             console.log("Dropped existing foreign key 'shipto_addresses_ibfk_1' from 'shipto_addresses' table.");
         } catch (error) {
             if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') { // Ignore error if key doesn't exist
-
                 console.warn("Could not drop foreign key 'shipto_addresses_ibfk_1' (it might not exist or is already dropped):", error.message);
             }
         }
