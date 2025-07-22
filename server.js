@@ -45,11 +45,12 @@ console.log(`Application will attempt to listen on port: ${PORT}`);
 
 
 // Separate database configuration for direct MySQL2 connections
+// Reverted to hardcoded values from your working servers 7-21.js
 const dbConnectionConfig = {
-  host: process.env.DB_HOST || "localhost", // Use environment variable
-  user: process.env.DB_USER || "root",     // Use environment variable
-  password: process.env.DB_PASSWORD || "password", // Use environment variable
-  database: process.env.DB_NAME || "checkout_db",  // Use environment variable
+  host: "192.254.232.38",
+  user: "gmistarz_cse",
+  password: "Csec@1280",
+  database: "gmistarz_cse",
   connectTimeout: 10000 // Add a 10-second connection timeout (10000 ms)
 };
 
@@ -120,11 +121,11 @@ app.use(express.static("public"));
 
 
 // --- Nodemailer Transporter Configuration ---
-// IMPORTANT: Replace with your actual email service credentials or environment variables.
+// IMPORTANT: Reverted to use SMTP_HOST, SMTP_PORT, SMTP_SECURE as per your working servers 7-21.js
 const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_SECURE === 'true', // Convert string to boolean
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_SECURE === 'true', // Convert string to boolean
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -135,7 +136,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // NEW: Log Nodemailer configuration details (excluding password for security)
-console.log(`Nodemailer Config: Host=${process.env.EMAIL_HOST}, Port=${process.env.EMAIL_PORT}, Secure=${process.env.EMAIL_SECURE}, User=${process.env.EMAIL_USER}`);
+console.log(`Nodemailer Config: Host=${process.env.SMTP_HOST}, Port=${process.env.SMTP_PORT}, Secure=${process.env.SMTP_SECURE}, User=${process.env.EMAIL_USER}`);
 
 
 // --- Helper Middleware for Admin Check ---
@@ -1136,19 +1137,19 @@ async function generatePdfFromHtml(htmlContent) {
         console.error("Error generating PDF:", error);
         throw new Error("Failed to generate PDF for order confirmation.");
     } finally {
-        if (browser) {
-            await browser.close();
-        }
-        if (userDataDir) {
-            try {
-                await fs.rm(userDataDir, { recursive: true, force: true });
-                console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
-            } catch (cleanupError) {
-                console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
+            if (browser) {
+                await browser.close();
+            }
+            if (userDataDir) {
+                try {
+                    await fs.rm(userDataDir, { recursive: true, force: true });
+                    console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
+                } catch (cleanupError) {
+                    console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
+                }
             }
         }
     }
-}
 
 
 app.post("/submit-order", requireAuth, async (req, res) => {
@@ -1170,7 +1171,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         await conn.beginTransaction();
 
         // Fetch company details to check approval status and apply discount
-        const [companyRows] = await conn.execute("SELECT id, name, discount, approved FROM companies WHERE id = ?", [companyId]);
+        const [companyRows] = await conn.execute("SELECT id, name, discount, approved, terms FROM companies WHERE id = ?", [companyId]); // Fetch terms here
         if (companyRows.length === 0) {
             await conn.rollback();
             return res.status(404).json({ error: "Company not found for the logged-in user." });
@@ -1217,7 +1218,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const orderDetailsForEmail = {
             poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount,
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
-            terms: company.terms // Pass company terms
+            terms: company.terms // Pass company terms from fetched company data
         };
         const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
 
@@ -1278,6 +1279,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         if (conn) {
             await conn.rollback();
         }
+        // Log the full error object for detailed debugging on the backend server
         console.error("Error submitting order (Backend):", err);
         res.status(500).json({ error: err.message || "Failed to submit order due to server error." });
     } finally {
@@ -1289,7 +1291,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
-  res.redirect("/admin.html");
+  res.redirect("/admin-dashboard.html");
 });
 
 // Database Initialization Function
@@ -1299,38 +1301,22 @@ async function initializeDatabase() {
         conn = await mysql.createConnection(dbConnectionConfig);
         console.log("Database connection for initialization established.");
 
-        // Attempt to drop foreign key constraints if they exist
-        // This is done by querying INFORMATION_SCHEMA to get the constraint name
-        const dropForeignKey = async (tableName, referencedTableName) => {
-            try {
-                const [rows] = await conn.execute(`
-                    SELECT CONSTRAINT_NAME
-                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
-                    WHERE CONSTRAINT_SCHEMA = DATABASE()
-                    AND TABLE_NAME = ?
-                    AND CONSTRAINT_TYPE = 'FOREIGN KEY'
-                    AND REFERENCED_TABLE_NAME = ?;
-                `, [tableName, referencedTableName]);
-
-                if (rows.length > 0) {
-                    const constraintName = rows[0].CONSTRAINT_NAME;
-                    await conn.execute(`ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName};`);
-                    console.log(`Dropped foreign key '${constraintName}' from '${tableName}' table.`);
-                } else {
-                    console.log(`Foreign key for '${tableName}' table referencing '${referencedTableName}' not found or already dropped.`);
-                }
-            } catch (error) {
-                console.warn(`Error dropping foreign key from '${tableName}' table (might not exist or other issue):`, error.message);
-            }
-        };
-
-        await dropForeignKey('users', 'companies');
-        await dropForeignKey('shipto_addresses', 'companies');
+        // Drop tables in reverse order of foreign key dependency for clean recreation
+        await conn.execute(`DROP TABLE IF EXISTS shipto_addresses;`);
+        console.log("Dropped 'shipto_addresses' table if it existed.");
+        await conn.execute(`DROP TABLE IF EXISTS users;`);
+        console.log("Dropped 'users' table if it existed.");
+        await conn.execute(`DROP TABLE IF EXISTS orders;`);
+        console.log("Dropped 'orders' table if it existed.");
+        await conn.execute(`DROP TABLE IF EXISTS companies;`);
+        console.log("Dropped 'companies' table if it existed.");
+        await conn.execute(`DROP TABLE IF EXISTS admin_settings;`);
+        console.log("Dropped 'admin_settings' table if it existed.");
 
 
         // Create 'companies' table
         await conn.execute(`
-            CREATE TABLE IF NOT EXISTS companies (
+            CREATE TABLE companies (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE,
                 logo VARCHAR(255),
@@ -1346,11 +1332,11 @@ async function initializeDatabase() {
                 denied BOOLEAN DEFAULT FALSE
             ) ENGINE=InnoDB;
         `);
-        console.log("'companies' table checked/created.");
+        console.log("'companies' table created.");
 
-        // Create 'users' table
+        // Create 'users' table with foreign key
         await conn.execute(`
-            CREATE TABLE IF NOT EXISTS users (
+            CREATE TABLE users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 email VARCHAR(255) NOT NULL UNIQUE,
                 first_name VARCHAR(255),
@@ -1358,28 +1344,15 @@ async function initializeDatabase() {
                 phone VARCHAR(50),
                 role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
                 password VARCHAR(255) NOT NULL,
-                company_id INT
+                company_id INT,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
-        console.log("'users' table checked/created.");
+        console.log("'users' table created.");
 
-        // Add foreign key constraint for 'users' table with ON DELETE CASCADE
-        try {
-            await conn.execute(`
-                ALTER TABLE users
-                ADD CONSTRAINT users_ibfk_1
-                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
-            `);
-            console.log("Added foreign key 'users_ibfk_1' with ON DELETE CASCADE to 'users' table.");
-        } catch (error) {
-            if (error.code !== 'ER_DUP_KEYNAME') {
-                console.warn("Could not add foreign key 'users_ibfk_1' (it might already exist):", error.message);
-            }
-        }
-
-        // Create 'shipto_addresses' table
+        // Create 'shipto_addresses' table with foreign key
         await conn.execute(`
-            CREATE TABLE IF NOT EXISTS shipto_addresses (
+            CREATE TABLE shipto_addresses (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 company_id INT NOT NULL,
                 name VARCHAR(255) NOT NULL,
@@ -1389,28 +1362,15 @@ async function initializeDatabase() {
                 state VARCHAR(255) NOT NULL,
                 zip VARCHAR(20) NOT NULL,
                 country VARCHAR(255),
-                is_default BOOLEAN DEFAULT FALSE
+                is_default BOOLEAN DEFAULT FALSE,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
-        console.log("'shipto_addresses' table checked/created.");
-
-        // Add foreign key constraint for 'shipto_addresses' table with ON DELETE CASCADE
-        try {
-            await conn.execute(`
-                ALTER TABLE shipto_addresses
-                ADD CONSTRAINT shipto_addresses_ibfk_1
-                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE;
-            `);
-            console.log("Added foreign key 'shipto_addresses_ibfk_1' with ON DELETE CASCADE to 'shipto_addresses' table.");
-        } catch (error) {
-            if (error.code !== 'ER_DUP_KEYNAME') {
-                console.warn("Could not add foreign key 'shipto_addresses_ibfk_1' (it might already exist):", error.message);
-            }
-        }
+        console.log("'shipto_addresses' table created.");
 
         // Create 'orders' table
         await conn.execute(`
-            CREATE TABLE IF NOT EXISTS orders (
+            CREATE TABLE orders (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 email VARCHAR(255) NOT NULL,
                 poNumber VARCHAR(255) NOT NULL,
@@ -1422,17 +1382,17 @@ async function initializeDatabase() {
                 date DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         `);
-        console.log("'orders' table checked/created.");
+        console.log("'orders' table created.");
 
         // Create 'admin_settings' table
         await conn.execute(`
-            CREATE TABLE IF NOT EXISTS admin_settings (
+            CREATE TABLE admin_settings (
                 id INT PRIMARY KEY DEFAULT 1,
                 po_email VARCHAR(255),
                 registration_email VARCHAR(255)
             ) ENGINE=InnoDB;
         `);
-        console.log("'admin_settings' table checked/created.");
+        console.log("'admin_settings' table created.");
 
         // Insert default admin settings if not exists
         const [settingsRows] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
