@@ -1058,24 +1058,23 @@ function generateOrderHtmlEmail(orderData) {
 
             <hr style="border: none; border-top: 1px solid #dcdcdc; margin: 5px 0 10px 0;">
 
-            <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">Order details:</p>
+            <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> ${orderData.poNumber}</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
+                        <p style="margin: 7px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
                     </td>
                 </tr>
             </table>
