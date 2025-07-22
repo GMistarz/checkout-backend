@@ -1049,7 +1049,7 @@ function generateOrderHtmlEmail(orderData) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
                 <tr>
                     <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
-                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
+                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
                     </td>
                     <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
@@ -1075,7 +1075,7 @@ function generateOrderHtmlEmail(orderData) {
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
                         <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
                     </td>
                 </tr>
