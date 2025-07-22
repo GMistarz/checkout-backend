@@ -1299,23 +1299,34 @@ async function initializeDatabase() {
         conn = await mysql.createConnection(dbConnectionConfig);
         console.log("Database connection for initialization established.");
 
-        // Drop foreign key constraints if they exist before dropping tables or re-creating
-        try {
-            await conn.execute(`
-                ALTER TABLE users DROP FOREIGN KEY IF EXISTS users_ibfk_1;
-            `);
-            console.log("Dropped existing foreign key 'users_ibfk_1' from 'users' table.");
-        } catch (error) {
-            console.warn("Could not drop foreign key 'users_ibfk_1':", error.message);
-        }
-        try {
-            await conn.execute(`
-                ALTER TABLE shipto_addresses DROP FOREIGN KEY IF EXISTS shipto_addresses_ibfk_1;
-            `);
-            console.log("Dropped existing foreign key 'shipto_addresses_ibfk_1' from 'shipto_addresses' table.");
-        } catch (error) {
-            console.warn("Could not drop foreign key 'shipto_addresses_ibfk_1':", error.message);
-        }
+        // Attempt to drop foreign key constraints if they exist
+        // This is done by querying INFORMATION_SCHEMA to get the constraint name
+        const dropForeignKey = async (tableName, referencedTableName) => {
+            try {
+                const [rows] = await conn.execute(`
+                    SELECT CONSTRAINT_NAME
+                    FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+                    WHERE CONSTRAINT_SCHEMA = DATABASE()
+                    AND TABLE_NAME = ?
+                    AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+                    AND REFERENCED_TABLE_NAME = ?;
+                `, [tableName, referencedTableName]);
+
+                if (rows.length > 0) {
+                    const constraintName = rows[0].CONSTRAINT_NAME;
+                    await conn.execute(`ALTER TABLE ${tableName} DROP FOREIGN KEY ${constraintName};`);
+                    console.log(`Dropped foreign key '${constraintName}' from '${tableName}' table.`);
+                } else {
+                    console.log(`Foreign key for '${tableName}' table referencing '${referencedTableName}' not found or already dropped.`);
+                }
+            } catch (error) {
+                console.warn(`Error dropping foreign key from '${tableName}' table (might not exist or other issue):`, error.message);
+            }
+        };
+
+        await dropForeignKey('users', 'companies');
+        await dropForeignKey('shipto_addresses', 'companies');
+
 
         // Create 'companies' table
         await conn.execute(`
