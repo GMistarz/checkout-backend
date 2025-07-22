@@ -287,9 +287,9 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
 
         transporter.sendMail(mailOptions, (error, info) => {
             if (error) {
-                console.error("Error sending registration notification email:", error);
+                console.error("Error sending new user registration email:", error);
             } else {
-                console.log("Registration notification email sent:", info.response);
+                console.log("New user registration email sent:", info.response);
             }
         });
     } catch (err) {
@@ -390,6 +390,7 @@ app.post("/login", async (req, res) => {
   } finally {
     if (conn) {
         conn.end();
+
         console.log("[Login Route] Database connection closed.");
     }
   }
@@ -1301,7 +1302,11 @@ async function initializeDatabase() {
         conn = await mysql.createConnection(dbConnectionConfig);
         console.log("Database connection for initialization established.");
 
-        // Drop tables in reverse order of foreign key dependency for clean recreation
+        // Temporarily disable foreign key checks
+        await conn.execute(`SET FOREIGN_KEY_CHECKS = 0;`);
+        console.log("Foreign key checks disabled.");
+
+        // Drop tables in reverse order of dependency (or simply all of them now that checks are off)
         await conn.execute(`DROP TABLE IF EXISTS shipto_addresses;`);
         console.log("Dropped 'shipto_addresses' table if it existed.");
         await conn.execute(`DROP TABLE IF EXISTS users;`);
@@ -1312,6 +1317,10 @@ async function initializeDatabase() {
         console.log("Dropped 'companies' table if it existed.");
         await conn.execute(`DROP TABLE IF EXISTS admin_settings;`);
         console.log("Dropped 'admin_settings' table if it existed.");
+
+        // Re-enable foreign key checks before creating tables
+        await conn.execute(`SET FOREIGN_KEY_CHECKS = 1;`);
+        console.log("Foreign key checks re-enabled.");
 
 
         // Create 'companies' table
