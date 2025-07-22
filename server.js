@@ -796,10 +796,12 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ?", [companyId]);
         res.json(addresses);
-    } catch (err) {
+    }
+    catch (err) {
         console.error("Error fetching ship-to addresses:", err);
         res.status(500).json({ error: "Failed to retrieve ship-to addresses" });
-    } finally {
+    }
+    finally {
         if (conn) conn.end();
     }
 });
@@ -1026,15 +1028,19 @@ function generateOrderHtmlEmail(orderData) {
     let itemsHtml = orderData.items.map(item => `
         <tr>
             <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
-            <td style="border: 1px solid #ccc; padding: 8px;">${item.partNo}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.price.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${(item.price * item.quantity).toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px;">
+                <strong>${item.partNo}</strong><br>
+                <small>${item.description}</small>
+            </td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.listPrice.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.netPrice.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.lineTotal.toFixed(2)}</td>
             <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
         </tr>
     `).join('');
 
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = orderData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     return `
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
@@ -1069,7 +1075,8 @@ function generateOrderHtmlEmail(orderData) {
                     <tr>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">List Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Net Price</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
                     </tr>
@@ -1222,7 +1229,48 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             console.error("Failed to generate PDF, proceeding without attachment:", pdfError);
         }
 
-        await sendOrderNotificationEmail(orderId, orderDetailsForEmail, pdfBuffer);
+        // NEW: Fetch admin settings for PO email recipient
+        let poEmailRecipient = "Greg@ChicagoStainless.com"; // Default fallback
+        try {
+            const [settingsRows] = await conn.execute("SELECT po_email FROM admin_settings WHERE id = 1");
+            if (settingsRows.length > 0 && settingsRows[0].po_email) {
+                poEmailRecipient = settingsRows[0].po_email;
+            }
+        } catch (settingsErr) {
+            console.error("Error fetching PO email recipient from admin_settings:", settingsErr);
+        }
+
+        // NEW: Send order information email to you (the administrator) with PDF attachment
+        const mailOptions = {
+            from: process.env.EMAIL_USER, // Changed to use the authenticated email user for better deliverability
+            to: poEmailRecipient, // Email will be sent to the configured PO email address
+            subject: `${company.name} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
+            html: `
+                <p>Hello,</p>
+                <p>A new order has been submitted through the www.ChicagoStainless.com checkout page.</p>
+                <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>Customer Email:</strong> ${userEmail}</p>
+                <p><strong>PO Number:</strong> ${poNumber}</p>
+                <p>Please find the detailed order information attached as a PDF.</p>
+                <p>Thank you.</p>
+            `,
+            attachments: pdfBuffer ? [
+                {
+                    filename: `Order_${orderId}_${poNumber}.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ] : []
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending order notification email:", error);
+                // This error should not prevent the frontend from receiving success
+            } else {
+                console.log("Order notification email sent:", info.response);
+            }
+        });
 
         res.status(200).json({ message: "Order submitted successfully! Notification email sent.", orderId: orderId });
 
