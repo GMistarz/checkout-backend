@@ -1413,6 +1413,33 @@ async function initializeDatabase() {
             console.log("Default admin settings inserted.");
         }
 
+        // --- NEW: Create a default company and admin user if none exist ---
+        const [existingCompanies] = await conn.execute("SELECT id FROM companies LIMIT 1");
+        if (existingCompanies.length === 0) {
+            console.log("No companies found. Creating a default company and admin user.");
+
+            // Create a default company
+            const [companyResult] = await conn.execute(
+                `INSERT INTO companies (name, address1, city, state, zip, country, terms, discount, approved)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE)`, // Default company is approved
+                ["Default Admin Company", "123 Admin St", "Admin City", "FL", "12345", "USA", "Net 30", 0.00, true]
+            );
+            const defaultCompanyId = companyResult.insertId;
+            console.log(`Default company created with ID: ${defaultCompanyId}`);
+
+            // Create a default admin user
+            const adminEmail = "admin@chicagostainless.com";
+            const adminPassword = "adminpassword"; // This should be from an environment variable in production
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
+
+            await conn.execute(
+                `INSERT INTO users (email, first_name, last_name, role, password, company_id)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [adminEmail, "Admin", "User", "admin", hashedPassword, defaultCompanyId]
+            );
+            console.log(`Default admin user '${adminEmail}' created.`);
+        }
+
 
     } catch (err) {
         console.error("Error initializing database:", err);
