@@ -1047,7 +1047,7 @@ function generateOrderHtmlEmail(orderData) {
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
             <div style="text-align: center; margin-bottom: 20px;">
                 <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
-                <h1 style="color: #333;">Order Information</h1>
+                <h1 style="color: #333;">CSE Order Information</h1>
             </div>
             
             <p>Order details:</p>
@@ -1095,7 +1095,7 @@ function generateOrderHtmlEmail(orderData) {
                 772-781-1441
             </div>
         </div>
-    `; 
+    `;
 }
 
 // NEW: Function to generate PDF from HTML content
