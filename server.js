@@ -1,6 +1,6 @@
 require('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
-const cors = require("cors");
+const cors = require = require("cors");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
@@ -1027,7 +1027,7 @@ function generateOrderHtmlEmail(orderData) {
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
             <div style="text-align: center; margin-bottom: 20px;">
                 <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="Company Logo" style="height: 60px;">
-                <h1 style="color: #333;">Order Information</h1>
+                <h1 style="color: #333;">CSE WEBSITE ORDER</h1>
             </div>
             
             <p>Order details:</p>
@@ -1285,6 +1285,7 @@ async function initializeDatabase() {
             console.log("Dropped existing foreign key 'shipto_addresses_ibfk_1' from 'shipto_addresses' table.");
         } catch (error) {
             if (error.code !== 'ER_CANT_DROP_FIELD_OR_KEY') { // Ignore error if key doesn't exist
+
                 console.warn("Could not drop foreign key 'shipto_addresses_ibfk_1' (it might not exist or is already dropped):", error.message);
             }
         }
