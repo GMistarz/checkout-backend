@@ -79,23 +79,13 @@ const allowedOrigins = [
   "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
 ];
 
-// --- CORS Configuration ---
+// --- CORS Configuration (SIMPLIFIED) ---
 const corsOptions = {
-  origin: function (origin, callback) {
-    console.log(`[CORS Check] Request Origin: ${origin}`); // Log the incoming origin
-    if (!origin || allowedOrigins.includes(origin)) {
-      console.log(`[CORS Check] Origin ${origin} ALLOWED.`);
-      callback(null, true);
-    } else {
-      console.error(`[CORS Check] Origin ${origin} NOT ALLOWED.`);
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
+  origin: allowedOrigins, // Directly use the array of allowed origins
   credentials: true,
-  optionsSuccessStatus: 200, // Some legacy browsers (IE11, various SmartTVs) choke on 204
-  // Explicitly allow headers that might be sent in preflight
+  optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] // Explicitly list allowed methods
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 };
 
 app.use(cors(corsOptions));
@@ -390,7 +380,6 @@ app.post("/login", async (req, res) => {
   } finally {
     if (conn) {
         conn.end();
-
         console.log("[Login Route] Database connection closed.");
     }
   }
@@ -1049,7 +1038,7 @@ function generateOrderHtmlEmail(orderData) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
                 <tr>
                     <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
-                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
+                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
                     </td>
                     <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
@@ -1064,14 +1053,14 @@ function generateOrderHtmlEmail(orderData) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;">Bill To:</h2>
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                         <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;">Ship To:</h2>
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
