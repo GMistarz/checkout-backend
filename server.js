@@ -774,6 +774,7 @@ app.post("/delete-user", requireAdmin, async (req, res) => {
   }
 });
 
+
 app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
   const { companyId } = req.params;
   let conn;
@@ -1029,14 +1030,14 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 function generateOrderHtmlEmail(orderData) {
     let itemsHtml = orderData.items.map(item => `
         <tr>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: center;">${item.quantity}</td>
-            <td style="border: 1px solid #ccc; padding: 8px;">
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: center; color: #000000;">${item.quantity}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; color: #000000;">
                 <strong>${item.partNo}</strong><br>
                 <small>${item.description}</small>
             </td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.netPrice.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right;">$${item.lineTotal.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px;">${item.note || ''}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right; width: 15%; color: #000000;">$${item.netPrice.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000;">$${item.lineTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #ccc; padding: 8px; color: #000000;">${item.note || ''}</td>
         </tr>
     `).join('');
 
@@ -1044,55 +1045,61 @@ function generateOrderHtmlEmail(orderData) {
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     return `
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-            <div style="overflow: hidden; margin-bottom: 5px;">
-                <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 90px; height: auto; float: left; margin-right: 15px; display: block;">
-                <h1 style="font-size: 22px; color: #555; margin: 0; padding: 0; line-height: 1.2; text-align: center;">CSE WEBSITE ORDER</h1>
-            </div>
-
-            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
-
-            <p style="font-size: 14px; color: #666; margin: 0 0 15px 0;">Order details:</p>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05); color: #000000;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #555; font-size: 16px; font-weight: bold; margin-bottom: 5px;">Bill To:</h2>
-                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4;">${orderData.billingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+                    <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
+                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
                     </td>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #555; font-size: 16px; font-weight: bold; margin-bottom: 5px;">Ship To:</h2>
-                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4;">${orderData.shippingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px;"><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                    <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
+                        <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
                     </td>
                 </tr>
             </table>
 
-            <h2 style="color: #555; font-size: 20px;">Order Summary</h2>
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
+
+            <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">Order details:</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                <tr>
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;">Bill To:</h2>
+                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+                    </td>
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;">Ship To:</h2>
+                        <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
+                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Shipping Method:</strong> ${orderData.shippingMethod}</p>
+                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                    </td>
+                </tr>
+            </table>
+
+            <h2 style="color: #000000; font-size: 20px;">Order Summary</h2>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: center;">Qty</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Unit Price</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2; text-align: right;">Total</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f2f2f2;">Note</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: center; color: #000000;">Qty</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; color: #000000;">Part Number</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: right; width: 15%; color: #000000;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: right; color: #000000;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; color: #000000;">Note</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${itemsHtml}
                 </tbody>
             </table>
-            <p style="font-weight: bold; text-align: right; margin-bottom: 5px;">Item Count: ${totalQuantity}</p>
-            <p style="font-weight: bold; text-align: right; margin-top: 0;">Total Price: $${totalPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right; margin-bottom: 5px; color: #000000;">Item Count: ${totalQuantity}</p>
+            <p style="font-weight: bold; text-align: right; margin-top: 0; color: #000000;">Total Price: $${totalPrice.toFixed(2)}</p>
 
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #777;">
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
                 1280 SW 34th St<br>
                 Palm City, FL 34990 USA<br>
