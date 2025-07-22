@@ -37,6 +37,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // NEW: Import the MySQL session store
 const MySQLStore = require('express-mysql-session')(session);
 
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1034,8 +1035,8 @@ function generateOrderHtmlEmail(orderData) {
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     return `
+        <!-- Header Section - Refactored from table to flexbox -->
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #dcdcdc; border-radius: 8px; color: #000000; background-color: #e9e9e9;">
-            <!-- Header Section - Refactored from table to flexbox -->
             <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 5px;">
                 <div style="flex-shrink: 0; margin-right: 15px;">
                     <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
@@ -1054,17 +1055,17 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
-                        <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
-                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
                     </td>
                 </tr>
             </table>
