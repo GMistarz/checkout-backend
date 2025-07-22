@@ -1045,18 +1045,18 @@ function generateOrderHtmlEmail(orderData) {
 
     return `
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05);">
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
                 <tr>
-                    <td style="width: 30%; text-align: left; vertical-align: top; padding: 0;">
+                    <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
                         <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
                     </td>
-                    <td style="width: 70%; text-align: center; vertical-align: top; padding: 0;">
+                    <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #555; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
                     </td>
                 </tr>
             </table>
 
-            <hr style="border: none; border-top: 1px solid #ccc; margin: 10px 0;">
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
             <p style="font-size: 14px; color: #666; margin: 0 0 15px 0;">Order details:</p>
 
