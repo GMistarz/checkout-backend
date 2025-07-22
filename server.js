@@ -1019,14 +1019,14 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 function generateOrderHtmlEmail(orderData) {
     let itemsHtml = orderData.items.map(item => `
         <tr>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: center; color: #000000;">${item.quantity}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; color: #000000;">
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000;">${item.quantity}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000;">
                 <strong>${item.partNo}</strong><br>
                 <small>${item.description}</small>
             </td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right; width: 15%; color: #000000;">$${item.netPrice.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000;">$${item.lineTotal.toFixed(2)}</td>
-            <td style="border: 1px solid #ccc; padding: 8px; color: #000000;">${item.note || ''}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000;">$${item.netPrice.toFixed(2)}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000;">$${item.lineTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000;">${item.note || ''}</td>
         </tr>
     `).join('');
 
@@ -1034,33 +1034,32 @@ function generateOrderHtmlEmail(orderData) {
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     return `
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05); color: #000000;">
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-                <tr>
-                    <td style="width: 30%; text-align: left; vertical-align: middle; padding: 0;">
-                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 60px; height: auto; display: block;">
-                    </td>
-                    <td style="width: 70%; text-align: center; vertical-align: middle; padding: 0;">
-                        <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
-                    </td>
-                </tr>
-            </table>
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #dcdcdc; border-radius: 8px; color: #000000; background-color: #e9e9e9;">
+            <!-- Header Section - Refactored from table to flexbox -->
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 5px;">
+                <div style="flex-shrink: 0; margin-right: 15px;">
+                    <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
+                </div>
+                <div style="flex-grow: 1; text-align: center;">
+                    <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
+                </div>
+            </div>
 
-            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
+            <hr style="border: none; border-top: 1px solid #dcdcdc; margin: 5px 0 10px 0;">
 
             <p style="font-size: 14px; color: #000000; margin: 0 0 15px 0;">Order details:</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;"><strong>Bill To:</strong></h2>
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                         <p style="margin: 5px 0 0 0; font-size: 12px; color: #000000;"><strong>PO#:</strong> ${orderData.poNumber}</p>
                     </td>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
-                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #f8f8f8; padding: 5px;"><strong>Ship To:</strong></h2>
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
+                        <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
                         <p style="margin: 5px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
@@ -1074,11 +1073,11 @@ function generateOrderHtmlEmail(orderData) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: center; color: #000000;">Qty</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; color: #000000;">Part Number</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: right; width: 15%; color: #000000;">Unit Price</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; text-align: right; color: #000000;">Total</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #f8f8f8; color: #000000;">Note</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; width: 15%; color: #000000;">Unit Price</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; color: #000000;">Total</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Note</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1088,7 +1087,7 @@ function generateOrderHtmlEmail(orderData) {
             <p style="font-weight: bold; text-align: right; margin-bottom: 5px; color: #000000;">Item Count: ${totalQuantity}</p>
             <p style="font-weight: bold; text-align: right; margin-top: 0; color: #000000;">Total Price: $${totalPrice.toFixed(2)}</p>
 
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; color: #000000; font-size: 10px;">
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dcdcdc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
                 1280 SW 34th St<br>
                 Palm City, FL 34990 USA<br>
