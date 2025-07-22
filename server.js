@@ -1302,30 +1302,12 @@ async function initializeDatabase() {
         conn = await mysql.createConnection(dbConnectionConfig);
         console.log("Database connection for initialization established.");
 
-        // Temporarily disable foreign key checks
-        await conn.execute(`SET FOREIGN_KEY_CHECKS = 0;`);
-        console.log("Foreign key checks disabled.");
+        // IMPORTANT: No DROP TABLE statements here to preserve existing data.
+        // Tables will only be created if they don't already exist.
 
-        // Drop tables in reverse order of dependency (or simply all of them now that checks are off)
-        await conn.execute(`DROP TABLE IF EXISTS shipto_addresses;`);
-        console.log("Dropped 'shipto_addresses' table if it existed.");
-        await conn.execute(`DROP TABLE IF EXISTS users;`);
-        console.log("Dropped 'users' table if it existed.");
-        await conn.execute(`DROP TABLE IF EXISTS orders;`);
-        console.log("Dropped 'orders' table if it existed.");
-        await conn.execute(`DROP TABLE IF EXISTS companies;`);
-        console.log("Dropped 'companies' table if it existed.");
-        await conn.execute(`DROP TABLE IF EXISTS admin_settings;`);
-        console.log("Dropped 'admin_settings' table if it existed.");
-
-        // Re-enable foreign key checks before creating tables
-        await conn.execute(`SET FOREIGN_KEY_CHECKS = 1;`);
-        console.log("Foreign key checks re-enabled.");
-
-
-        // Create 'companies' table
+        // Create 'companies' table if not exists
         await conn.execute(`
-            CREATE TABLE companies (
+            CREATE TABLE IF NOT EXISTS companies (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE,
                 logo VARCHAR(255),
@@ -1341,11 +1323,11 @@ async function initializeDatabase() {
                 denied BOOLEAN DEFAULT FALSE
             ) ENGINE=InnoDB;
         `);
-        console.log("'companies' table created.");
+        console.log("'companies' table checked/created.");
 
-        // Create 'users' table with foreign key
+        // Create 'users' table if not exists with foreign key
         await conn.execute(`
-            CREATE TABLE users (
+            CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 email VARCHAR(255) NOT NULL UNIQUE,
                 first_name VARCHAR(255),
@@ -1357,11 +1339,11 @@ async function initializeDatabase() {
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
-        console.log("'users' table created.");
+        console.log("'users' table checked/created.");
 
-        // Create 'shipto_addresses' table with foreign key
+        // Create 'shipto_addresses' table if not exists with foreign key
         await conn.execute(`
-            CREATE TABLE shipto_addresses (
+            CREATE TABLE IF NOT EXISTS shipto_addresses (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 company_id INT NOT NULL,
                 name VARCHAR(255) NOT NULL,
@@ -1375,11 +1357,11 @@ async function initializeDatabase() {
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
-        console.log("'shipto_addresses' table created.");
+        console.log("'shipto_addresses' table checked/created.");
 
-        // Create 'orders' table
+        // Create 'orders' table if not exists
         await conn.execute(`
-            CREATE TABLE orders (
+            CREATE TABLE IF NOT EXISTS orders (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 email VARCHAR(255) NOT NULL,
                 poNumber VARCHAR(255) NOT NULL,
@@ -1391,17 +1373,17 @@ async function initializeDatabase() {
                 date DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         `);
-        console.log("'orders' table created.");
+        console.log("'orders' table checked/created.");
 
-        // Create 'admin_settings' table
+        // Create 'admin_settings' table if not exists
         await conn.execute(`
-            CREATE TABLE admin_settings (
+            CREATE TABLE IF NOT EXISTS admin_settings (
                 id INT PRIMARY KEY DEFAULT 1,
                 po_email VARCHAR(255),
                 registration_email VARCHAR(255)
             ) ENGINE=InnoDB;
         `);
-        console.log("'admin_settings' table created.");
+        console.log("'admin_settings' table checked/created.");
 
         // Insert default admin settings if not exists
         const [settingsRows] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
@@ -1413,7 +1395,7 @@ async function initializeDatabase() {
             console.log("Default admin settings inserted.");
         }
 
-        // --- NEW: Create a default company and admin user if none exist ---
+        // --- Create a default company and admin user ONLY if no companies exist ---
         const [existingCompanies] = await conn.execute("SELECT id FROM companies LIMIT 1");
         if (existingCompanies.length === 0) {
             console.log("No companies found. Creating a default company and admin user.");
