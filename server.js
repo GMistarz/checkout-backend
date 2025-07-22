@@ -1095,7 +1095,7 @@ function generateOrderHtmlEmail(orderData) {
                 772-781-1441
             </div>
         </div>
-    `;
+    `; 
 }
 
 // NEW: Function to generate PDF from HTML content
