@@ -1024,10 +1024,10 @@ function generateOrderHtmlEmail(orderData) {
             <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
                 <strong>${item.partNo}</strong><br>
                 <small>${item.description}</small>
+                ${item.note ? `<br><small>Note: ${item.note}</small>` : ''}
             </td>
             <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toFixed(2)}</td>
             <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toFixed(2)}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">${item.note || ''}</td>
         </tr>
     `).join('');
 
@@ -1084,10 +1084,9 @@ function generateOrderHtmlEmail(orderData) {
                 <thead>
                     <tr>
                         <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number</th>
+                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number / Description / Note</th>
                         <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; width: 15%; color: #000000;">Unit Price</th>
                         <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; color: #000000;">Total</th>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Note</th>
                     </tr>
                 </thead>
                 <tbody>
