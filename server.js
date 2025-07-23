@@ -1024,7 +1024,7 @@ function generateOrderHtmlEmail(orderData) {
             <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
                 <strong>${item.partNo}</strong><br>
                 <small>${item.description}</small>
-                ${item.note ? `<br><small>Note: ${item.note}</small>` : ''}
+                ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
             </td>
             <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toFixed(2)}</td>
             <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toFixed(2)}</td>
