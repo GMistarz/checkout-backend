@@ -1026,8 +1026,8 @@ function generateOrderHtmlEmail(orderData) {
                 <small>${item.description}</small>
                 ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
             </td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toFixed(2)}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toFixed(2)}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         </tr>
     `).join('');
 
@@ -1094,7 +1094,7 @@ function generateOrderHtmlEmail(orderData) {
                 </tbody>
             </table>
             <p style="font-weight: bold; text-align: right; margin-bottom: 5px; color: #000000;">Item Count: ${totalQuantity}</p>
-            <p style="font-weight: bold; text-align: right; margin-top: 0; color: #000000;">Total Price: $${totalPrice.toFixed(2)}</p>
+            <p style="font-weight: bold; text-align: right; margin-top: 0; color: #000000;">Total Price: $${totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
 
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dcdcdc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
