@@ -352,7 +352,8 @@ app.post("/login", async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     console.log("[Login Route] Database connection established.");
 
-    const [users] = await conn.execute("SELECT * FROM users WHERE email = ?", [email]);
+    // MODIFIED: Explicitly select columns including 'phone'
+    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE email = ?", [email]);
     console.log(`[Login Route] Query result for user ${email}:`, users);
 
     const user = users[0];
@@ -368,7 +369,8 @@ app.post("/login", async (req, res) => {
         role: user.role,
         companyId: user.company_id,
         firstName: user.first_name,
-        lastName: user.last_name
+        lastName: user.last_name,
+        phone: user.phone // Include phone number here
     };
 
     console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
@@ -392,13 +394,15 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Session user:", user);
 
   if (user) {
+      console.log("[User Profile Route] User profile phone from session:", user.phone); // ADDED LOG
       console.log("[User Profile Route] Sending user profile from session.");
       res.json({
           email: user.email,
           role: user.role,
           company_id: user.companyId,
           first_name: user.firstName,
-          last_name: user.lastName
+          last_name: user.lastName,
+          phone: user.phone // Include phone number here
       });
   } else {
       console.log("[User Profile Route] User not found in session (should be caught by requireAuth).");
@@ -698,7 +702,7 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   }
 });
 
-app.post("/add-user", async (req, res) => {
+app.post("/add-user", requireAdmin, async (req, res) => { // Added requireAdmin middleware
   const { email, firstName, lastName, phone, role, password, companyId } = req.body;
   if (!email || !companyId || !password) {
     return res.status(400).json({ error: "Email, password, and companyId are required." });
@@ -709,8 +713,8 @@ app.post("/add-user", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     await conn.execute(
       `INSERT INTO users (email, first_name, last_name, phone, role, password, company_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [email, firstName, lastName, phone, role, hashedPassword, companyId]
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
     );
     res.json({ message: "User added" });
   }
@@ -731,12 +735,12 @@ app.post("/edit-user", requireAdmin, async (req, res) => {
       const hashedPassword = await bcrypt.hash(password, 10);
       await conn.execute(
         `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ? WHERE id = ?`,
-        [email, firstName, lastName, phone, role, hashedPassword, id]
+        [email, firstName, lastName, phone || '', role, hashedPassword, id]
       );
     } else {
       await conn.execute(
         `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
-        [email, firstName, lastName, phone, role, id]
+        [email, firstName, lastName, phone || '', role, id]
       );
     }
     res.json({ message: "User updated" });
@@ -756,9 +760,6 @@ app.post("/delete-user", requireAdmin, async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     await conn.execute("DELETE FROM users WHERE id = ?", [id]);
     res.json({ message: "User deleted" });
-  } catch (err) {
-    console.error("Delete user error:", err);
-    res.status(500).json({ error: "Failed to delete user" });
   } finally {
     if (conn) conn.end();
   }
@@ -895,9 +896,6 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.execute("DELETE FROM shipto_addresses WHERE id = ?", [addressId]);
         res.json({ message: "Address deleted successfully" });
-    } catch (err) {
-        console.error("Error deleting ship-to address:", err);
-        res.status(500).json({ error: "Failed to delete ship-to address" });
     } finally {
         if (conn) conn.end();
     }
@@ -1072,7 +1070,9 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
-                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
+                        <p style="margin: 0; font-size: 12px; color: #000000; padding-left: 80px;">(${orderData.userEmail})</p>
+                        ${orderData.userPhone && orderData.userPhone.trim() !== '' ? `<p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Phone:</strong> ${orderData.userPhone}</p>` : ''}
                         <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
@@ -1106,6 +1106,7 @@ function generateOrderHtmlEmail(orderData) {
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dcdcdc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
                 1280 SW 34th St<br>
+
                 Palm City, FL 34990 USA<br>
                 772-781-1441
             </div>
@@ -1178,6 +1179,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
     const userEmail = req.session.user.email;
+    const userPhone = req.session.user.phone; // Get user's phone number from session
 
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
 
@@ -1239,7 +1241,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const orderDetailsForEmail = {
             poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount,
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
-            terms: company.terms // Pass company terms from fetched company data
+            terms: company.terms, // Pass company terms from fetched company data
+            userEmail: userEmail, // Pass user email
+            userPhone: userPhone // Pass user phone
         };
         const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
 
