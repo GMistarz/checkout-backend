@@ -352,8 +352,8 @@ app.post("/login", async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     console.log("[Login Route] Database connection established.");
 
-    // MODIFIED: Explicitly select columns including 'phone'
-    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE email = ?", [email]);
+    // MODIFIED: Explicitly select columns including 'phone' and 'password'
+    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, password, company_id FROM users WHERE email = ?", [email]);
     console.log(`[Login Route] Query result for user ${email}:`, users);
 
     const user = users[0];
@@ -392,6 +392,7 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Route hit.");
   const { user } = req.session;
   console.log("[User Profile Route] Session user:", user);
+
 
   if (user) {
       console.log("[User Profile Route] User profile phone from session:", user.phone); // ADDED LOG
@@ -1106,7 +1107,6 @@ function generateOrderHtmlEmail(orderData) {
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dcdcdc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
                 1280 SW 34th St<br>
-
                 Palm City, FL 34990 USA<br>
                 772-781-1441
             </div>
