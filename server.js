@@ -1073,9 +1073,12 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
-                        <p style="margin: 10px 0 0 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        ${orderData.userEmail && orderData.userEmail.trim() !== '' ? `<p style="margin: 0; font-size: 12px; color: #000000; padding-left: 80px;">(${orderData.userEmail})</p>` : ''}
-                        ${orderData.userPhone && orderData.userPhone.trim() !== '' ? `<p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Phone:</strong> ${orderData.userPhone}</p>` : ''}
+                        <h3 style="margin: 10px 0 5px 0; font-size: 14px; color: #000000;"><strong>Ordered By:</strong></h3>
+                        <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">
+                            ${orderData.orderedBy}<br>
+                            ${orderData.userEmail}<br>
+                            ${orderData.userPhone && orderData.userPhone.trim() !== '' ? `Phone: ${orderData.userPhone}` : ''}
+                        </p>
                         <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
