@@ -210,8 +210,9 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         const recipientEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
             to: recipientEmail,
+            replyTo: orderDetails.orderedByEmail, // Set REPLY-TO to user's email
             subject: `New Website Order: #${orderId} - PO# ${orderDetails.poNumber}`,
             html: `
                 <p>Dear Administrator,</p>
@@ -258,8 +259,9 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
         const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
             to: recipientEmail,
+            replyTo: userEmail, // Set REPLY-TO to user's email
             subject: `New Company Registration: ${companyName}`,
             html: `
                 <p>Hello Admin,</p>
@@ -313,8 +315,9 @@ async function sendCompanyApprovalEmail(companyId) {
         const userName = userRows[0].first_name;
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
             to: userEmail,
+            replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
             subject: `Your Company Registration for ${companyName} Has Been Approved!`,
             html: `
                 <p>Dear ${userName || 'Customer'},</p>
@@ -983,8 +986,9 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         }
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
             to: userEmail,
+            replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
             subject: `Your Company Registration for ${company.name} Has Been Approved!`,
             html: `
                 <p>Dear ${userName},</p>
@@ -1272,8 +1276,10 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
         const mailOptions = {
-            from: process.env.EMAIL_USER, // Changed to use the authenticated email user for better deliverability
+            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
+
             to: poEmailRecipient, // Email will be sent to the configured PO email address
+            replyTo: orderedByEmail, // Set REPLY-TO to the user's email from the checkout page
             subject: `${company.name} - PO# ${poNumber}`, // UPDATED SUBJECT LINE
             html: `
                 <p>Hello,</p>
