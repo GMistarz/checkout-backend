@@ -394,6 +394,7 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Session user:", user);
 
 
+
   if (user) {
       console.log("[User Profile Route] User profile phone from session:", user.phone); // ADDED LOG
       console.log("[User Profile Route] Sending user profile from session.");
@@ -790,6 +791,7 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ?", [companyId]);
+
         res.json(addresses);
     }
     catch (err) {
@@ -1072,7 +1074,7 @@ function generateOrderHtmlEmail(orderData) {
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
                         <p style="margin: 10px 0 0 0; font-size: 12px; color: #000000;"><strong>Ordered By:</strong> ${orderData.orderedBy}</p>
-                        <p style="margin: 0; font-size: 12px; color: #000000; padding-left: 80px;">(${orderData.userEmail})</p>
+                        ${orderData.userEmail && orderData.userEmail.trim() !== '' ? `<p style="margin: 0; font-size: 12px; color: #000000; padding-left: 80px;">(${orderData.userEmail})</p>` : ''}
                         ${orderData.userPhone && orderData.userPhone.trim() !== '' ? `<p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Phone:</strong> ${orderData.userPhone}</p>` : ''}
                         <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                     </td>
