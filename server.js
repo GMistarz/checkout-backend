@@ -1073,13 +1073,13 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
-                        <h3 style="margin: 10px 0 5px 0; font-size: 14px; color: #000000;"><strong>Ordered By:</strong></h3>
+                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
+                        <h3 style="margin: 10px 0 5px 0; font-size: 14px; color: #000000; background-color: #e0e0e0; padding: 5px;"><strong>Ordered By:</strong></h3>
                         <p style="margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">
                             ${orderData.orderedBy}<br>
-                            ${orderData.userEmail}<br>
-                            ${orderData.userPhone && orderData.userPhone.trim() !== '' ? `Phone: ${orderData.userPhone}` : ''}
+                            ${orderData.orderedByEmail}<br>
+                            ${orderData.orderedByPhone && orderData.orderedByPhone.trim() !== '' ? `Phone: ${orderData.orderedByPhone}` : ''}
                         </p>
-                        <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
                     </td>
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
@@ -1180,16 +1180,17 @@ async function generatePdfFromHtml(htmlContent) {
 
 
 app.post("/submit-order", requireAuth, async (req, res) => {
-    const { poNumber, orderedBy, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
+    // Destructure new fields: orderedByEmail, orderedByPhone
+    const { poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
-    const userEmail = req.session.user.email;
-    const userPhone = req.session.user.phone; // Get user's phone number from session
+    // userEmail and userPhone from session are no longer primarily used for the PDF content
+    // but can be kept for other logging/database purposes if needed.
 
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
 
-    if (!userEmail || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
-        console.error("Validation Error: Missing required order fields or empty cart.", { userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, items });
+    if (!orderedByEmail || !orderedByPhone || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
+        console.error("Validation Error: Missing required order fields or empty cart.", { orderedByEmail, orderedByPhone, poNumber, billingAddress, shippingAddress, shippingMethod, items });
         return res.status(400).json({ error: "Missing required order fields or empty cart." });
     }
 
@@ -1236,7 +1237,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [userEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(orderItemsWithCalculatedPrices)] // Store calculated items
+            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(orderItemsWithCalculatedPrices)] // Store calculated items
         );
         const orderId = orderResult.insertId;
 
@@ -1244,11 +1245,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Generate HTML for the email body and PDF
         const orderDetailsForEmail = {
-            poNumber, orderedBy, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount,
+            poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount,
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
             terms: company.terms, // Pass company terms from fetched company data
-            userEmail: userEmail, // Pass user email
-            userPhone: userPhone // Pass user phone
         };
         const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
 
@@ -1280,7 +1279,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
                 <p>Hello,</p>
                 <p>A new order has been submitted through the www.ChicagoStainless.com checkout page.</p>
                 <p><strong>Order ID:</strong> ${orderId}</p>
-                <p><strong>Customer Email:</strong> ${userEmail}</p>
+                <p><strong>Customer Email:</strong> ${orderedByEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
                 <p>Please find the detailed order information attached as a PDF.</p>
                 <p>Thank you.</p>
