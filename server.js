@@ -1018,18 +1018,22 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
 // Helper function to generate HTML for the order email
 function generateOrderHtmlEmail(orderData) {
-    let itemsHtml = orderData.items.map(item => `
-        <tr>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
-                <strong>${item.partNo}</strong><br>
-                <small>${item.description}</small>
-                ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
-            </td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        </tr>
-    `).join('');
+    let itemsHtml = orderData.items.map(item => {
+        // Apply the same formatting for "**" as in the frontend
+        let formattedDescription = item.description ? item.description.replace('**', '<br>**') : '';
+        return `
+            <tr>
+                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
+                <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
+                    <strong>${item.partNo}</strong><br>
+                    <small>${formattedDescription}</small>
+                    ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
+                </td>
+                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+        `;
+    }).join('');
 
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
