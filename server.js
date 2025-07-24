@@ -1018,8 +1018,11 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
 // Helper function to generate HTML for the order email
 function generateOrderHtmlEmail(orderData) {
+    // Determine if carrierAccount is present and not just whitespace
+    const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
+    
     let itemsHtml = orderData.items.map(item => {
-        // Apply the same formatting for "**" as in the frontend
+        // Apply the same formatting for "**" as in the frontend (only first instance)
         let formattedDescription = item.description ? item.description.replace('**', '<br>**') : '';
         return `
             <tr>
@@ -1075,10 +1078,10 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
-                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || 'N/A'}</p>
-                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || 'N/A'}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || ''}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || ''}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
-                        <p style="margin: 7px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount || 'N/A'}</p>
+                        ${hasCarrierAccount ? `<p style="margin: 7px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount}</p>` : ''}
                     </td>
                 </tr>
             </table>
@@ -1140,7 +1143,14 @@ async function generatePdfFromHtml(htmlContent) {
                 right: '0.5in',
                 bottom: '0.5in',
                 left: '0.5in'
-            }
+            },
+            displayHeaderFooter: true, // Enable header/footer
+            footerTemplate: `
+                <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
+                    Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+                </div>
+            `,
+            headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
         return pdfBuffer;
