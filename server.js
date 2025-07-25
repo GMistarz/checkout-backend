@@ -1011,6 +1011,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
         const mailOptions = {
             from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
             subject: `Your Company Registration for ${company.name} Has Been Approved!`,
@@ -1425,6 +1426,16 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'shipto_addresses' table checked/created.");
+
+        // NEW: Add carrier_account column if it doesn't exist (for existing databases)
+        // This ALTER TABLE statement ensures the column is added even if the table already existed
+        // before the 'carrier_account' column was introduced in the CREATE TABLE statement above.
+        await conn.execute(`
+            ALTER TABLE shipto_addresses
+            ADD COLUMN IF NOT EXISTS carrier_account VARCHAR(255);
+        `);
+        console.log("'carrier_account' column checked/added to 'shipto_addresses' table.");
+
 
         // Create 'orders' table if not exists
         await conn.execute(`
