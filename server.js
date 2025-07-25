@@ -1113,7 +1113,7 @@ function generateOrderHtmlEmail(orderData) {
 
     const rushHtml = isRush ? `
         <td style="text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: Impact, sans-serif; font-size: 35px; font-weight: bold; color: red; background-color: transparent;">RUSH</span>
+            <span style="font-family: 'Arial Black', Gadget, sans-serif; font-size: 45px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
         </td>
     ` : '';
 
@@ -1236,21 +1236,7 @@ async function generatePdfFromHtml(htmlContent) {
                 <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
                     Page <span class="pageNumber"></span> / <span class="totalPages"></span>
                 </div>
-                <script>
-                    // This script runs within the PDF's rendering context
-                    function updatePageNumbers() {
-                        const pageNumberSpan = document.querySelector('.pageNumber');
-                        const totalPagesSpan = document.querySelector('.totalPages');
-                        if (pageNumberSpan && totalPagesSpan) {
-                            // window.print has properties available during PDF generation
-                            pageNumberSpan.textContent = window.print ? window.print.page : '1'; // Fallback to 1
-                            totalPagesSpan.textContent = window.print ? window.print.pages : '1'; // Fallback to 1
-                        }
-                    }
-                    // Call it immediately
-                    updatePageNumbers();
-                </script>
-            `, // Re-added the JavaScript snippet for robust page numbering
+            `, // Reverted to native Puppeteer placeholders
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
