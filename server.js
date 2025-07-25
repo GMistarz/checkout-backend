@@ -1236,7 +1236,21 @@ async function generatePdfFromHtml(htmlContent) {
                 <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
                     Page <span class="pageNumber"></span> / <span class="totalPages"></span>
                 </div>
-            `, // Removed the JavaScript snippet, relying on Puppeteer's native templating
+                <script>
+                    // This script runs within the PDF's rendering context
+                    function updatePageNumbers() {
+                        const pageNumberSpan = document.querySelector('.pageNumber');
+                        const totalPagesSpan = document.querySelector('.totalPages');
+                        if (pageNumberSpan && totalPagesSpan) {
+                            // window.print has properties available during PDF generation
+                            pageNumberSpan.textContent = window.print ? window.print.page : '1'; // Fallback to 1
+                            totalPagesSpan.textContent = window.print ? window.print.pages : '1'; // Fallback to 1
+                        }
+                    }
+                    // Call it immediately
+                    updatePageNumbers();
+                </script>
+            `, // Re-added the JavaScript snippet for robust page numbering
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
@@ -1265,7 +1279,6 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     const { poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, carrierAccount, thirdPartyDetails, items } = req.body;
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
-
     // userEmail and userPhone from session are no longer primarily used for the PDF content
     // but can be kept for other logging/database purposes if needed.
 
