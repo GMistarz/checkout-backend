@@ -1113,7 +1113,7 @@ function generateOrderHtmlEmail(orderData) {
 
     const rushHtml = isRush ? `
         <td style="text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: 'Arial Black', Gadget, sans-serif; font-size: 45px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
+            <span style="font-family: 'Impact', 'Arial Black', Gadget, sans-serif; font-size: 60px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
         </td>
     ` : '';
 
@@ -1236,7 +1236,7 @@ async function generatePdfFromHtml(htmlContent) {
                 <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
                     Page <span class="pageNumber"></span> / <span class="totalPages"></span>
                 </div>
-            `, // Reverted to native Puppeteer placeholders
+            `, // Reverted to native Puppeteer placeholders, which are the standard and most reliable way
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
