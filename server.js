@@ -1070,7 +1070,7 @@ function generateOrderHtmlEmail(orderData) {
 
             <hr style="border: none; border-top: 1px solid #dcdcdc; margin: 5px 0 10px 0;">
 
-            <p style="font-size: 16px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+            <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> ${orderData.poNumber}</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
