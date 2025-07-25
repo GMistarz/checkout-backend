@@ -1111,11 +1111,12 @@ function generateOrderHtmlEmail(orderData) {
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
+    // Updated RUSH styling and positioning
     const rushHtml = isRush ? `
-        <td style="text-align: right; vertical-align: middle; padding: 0;">
-            <span style="Rubik, sans-serif; font-size: 40px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
+        <td style="width: 50%; text-align: right; vertical-align: middle; padding: 0;">
+            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 45px; font-weight: bold; color: red; background-color: transparent;">RUSH</span>
         </td>
-    ` : '';
+    ` : `<td style="width: 50%; padding: 0;"></td>`; // Empty cell to maintain layout if no RUSH
 
     return `
         <!-- Main Container for Email Content -->
@@ -1143,7 +1144,7 @@ function generateOrderHtmlEmail(orderData) {
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
                 <tr>
-                    <td style="text-align: left; vertical-align: middle; padding: 0;">
+                    <td style="width: 50%; text-align: left; vertical-align: middle; padding: 0;">
                         <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
                     </td>
                     ${rushHtml}
@@ -1236,7 +1237,7 @@ async function generatePdfFromHtml(htmlContent) {
                 <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
                     Page <span class="pageNumber"></span> / <span class="totalPages"></span>
                 </div>
-            `, // Reverted to native Puppeteer placeholders, which are the standard and most reliable way
+            `, // Using Puppeteer's native placeholders directly
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
