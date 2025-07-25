@@ -1129,7 +1129,7 @@ function generateOrderHtmlEmail(orderData) {
 
             <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
-            <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> ${orderData.poNumber}</p>
+            <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> <span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;">${orderData.poNumber}</span></p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
@@ -1160,7 +1160,7 @@ function generateOrderHtmlEmail(orderData) {
                 <thead>
                     <tr>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
-                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number / Description / Note</th>
+                        <th style="1px solid #ccc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number / Description / Note</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right; width: 15%; color: #000000;">Unit Price</th>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right; color: #000000;">Total</th>
                     </tr>
