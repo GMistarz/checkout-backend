@@ -1149,7 +1149,7 @@ function generateOrderHtmlEmail(orderData) {
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || ''}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || ''}</p>
-                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod}</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod} (${orderData.shippingAccountType})</p>
                         ${hasCarrierAccount ? `<p style="margin: 7px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount}</p>` : ''}
                     </td>
                 </tr>
@@ -1174,8 +1174,7 @@ function generateOrderHtmlEmail(orderData) {
 
             <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
-                1280 SW 34th St<br>
-                Palm City, FL 34990 USA<br>
+                1280 SW 34th St, Palm City, FL 34990 USA<br>
                 772-781-1441
             </div>
         </div>
