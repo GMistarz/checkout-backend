@@ -1113,7 +1113,7 @@ function generateOrderHtmlEmail(orderData) {
 
     const rushHtml = isRush ? `
         <td style="text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: 'Impact', 'Arial Black', Gadget, sans-serif; font-size: 60px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
+            <span style="Rubik, sans-serif; font-size: 40px; font-weight: 900; color: red; background-color: transparent;">RUSH</span>
         </td>
     ` : '';
 
