@@ -204,6 +204,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
 // Function to send order notification email (Admin)
 async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
 
+
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
@@ -1068,6 +1069,27 @@ function generateOrderHtmlEmail(orderData) {
         `;
     }).join('');
 
+    // NEW: Add Third Party Billing Details if shippingMethod is "Third Party Billing"
+    if (orderData.shippingMethod === "Third Party Billing" && orderData.thirdPartyDetails) {
+        const thirdParty = orderData.thirdPartyDetails;
+        itemsHtml += `
+            <tr>
+                <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
+                    <p style="font-weight: bold; margin-bottom: 5px;">Third Party Billing Details:</p>
+                    <p style="margin: 0;"><strong>Company:</strong> ${thirdParty.third_party_company_name || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>Account #:</strong> ${thirdParty.third_party_carrier_account || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>Address:</strong> ${thirdParty.third_party_address1 || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>City:</strong> ${thirdParty.third_party_city || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>State:</strong> ${thirdParty.third_party_state || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>Zip:</strong> ${thirdParty.third_party_zip || 'N/A'}</p>
+                    <p style="margin: 0;"><strong>Country:</strong> ${thirdParty.third_party_country || 'N/A'}</p>
+                </td>
+                <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
+            </tr>
+        `;
+    }
+
+
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
@@ -1285,6 +1307,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount: finalCarrierAccountForDb, // Use the final value
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
             terms: company.terms, // Pass company terms from fetched company data
+            thirdPartyDetails: thirdPartyDetails // Pass thirdPartyDetails to the HTML generation function
         };
         const orderHtmlContent = generateOrderHtmlEmail(orderDetailsForEmail);
 
