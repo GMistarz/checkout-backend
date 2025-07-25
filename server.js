@@ -1069,11 +1069,12 @@ function generateOrderHtmlEmail(orderData) {
         `;
     }).join('');
 
-    // NEW: Add Third Party Billing Details if shippingMethod is "Third Party Billing"
-    console.log("generateOrderHtmlEmail: Checking shippingMethod:", orderData.shippingMethod); // Debug log
-    console.log("generateOrderHtmlEmail: Checking thirdPartyDetails:", JSON.stringify(orderData.thirdPartyDetails, null, 2)); // Debug log
+    // Debug log for shippingAccountType
+    console.log("generateOrderHtmlEmail: Checking shippingAccountType:", orderData.shippingAccountType); 
+    console.log("generateOrderHtmlEmail: Checking thirdPartyDetails:", JSON.stringify(orderData.thirdPartyDetails, null, 2));
 
-    if (orderData.shippingMethod === "Third Party Billing" && orderData.thirdPartyDetails) {
+    // FIX: Changed condition to check shippingAccountType instead of shippingMethod
+    if (orderData.shippingAccountType === "Third Party Billing" && orderData.thirdPartyDetails) {
         const thirdParty = orderData.thirdPartyDetails;
         itemsHtml += `
             <tr>
@@ -1090,9 +1091,9 @@ function generateOrderHtmlEmail(orderData) {
                 <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
             </tr>
         `;
-        console.log("generateOrderHtmlEmail: Third Party Billing Details HTML added."); // Debug log
+        console.log("generateOrderHtmlEmail: Third Party Billing Details HTML added.");
     } else {
-        console.log("generateOrderHtmlEmail: Third Party Billing Details not added. Condition not met."); // Debug log
+        console.log("generateOrderHtmlEmail: Third Party Billing Details not added. Condition not met.");
     }
 
 
@@ -1247,6 +1248,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
     // NEW: Debugging logs for shippingMethod and thirdPartyDetails
     console.log("submit-order: Received shippingMethod:", shippingMethod);
+    console.log("submit-order: Received shippingAccountType:", shippingAccountType); // Added for debugging
     console.log("submit-order: Received thirdPartyDetails:", JSON.stringify(thirdPartyDetails, null, 2));
 
 
@@ -1314,7 +1316,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Generate HTML for the email body and PDF
         const orderDetailsForEmail = {
-            poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount: finalCarrierAccountForDb, // Use the final value
+            poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, shippingAccountType, carrierAccount: finalCarrierAccountForDb, // Use the final value
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
             terms: company.terms, // Pass company terms from fetched company data
             thirdPartyDetails: thirdPartyDetails // Pass thirdPartyDetails to the HTML generation function
