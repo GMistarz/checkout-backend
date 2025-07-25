@@ -1114,7 +1114,7 @@ function generateOrderHtmlEmail(orderData) {
     // Updated RUSH styling and positioning
     const rushHtml = isRush ? `
         <td style="width: 50%; text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 30px !important; font-weight: bold !important; color: red; background-color: transparent; white-space: nowrap;">RUSH</span>
+            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 30px; font-weight: 900; color: red; background-color: transparent; white-space: nowrap;">RUSH</span>
         </td>
     ` : `<td style="width: 50%; padding: 0;"></td>`; // Empty cell to maintain layout if no RUSH
 
@@ -1130,6 +1130,7 @@ function generateOrderHtmlEmail(orderData) {
                         <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
                     </td>
                     <!-- Centered Title Cell -->
+
                     <td style="text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
                     </td>
@@ -1234,10 +1235,10 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
-                <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555; display: flex; justify-content: center; align-items: center; white-space: nowrap;">
+                <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555; display: flex; justify-content: center; align-items: center; white-space: nowrap; position: absolute; bottom: 0; left: 0; height: 20px; line-height: 20px;">
                     Page <span class="pageNumber" style="margin: 0 3px;"></span> / <span class="totalPages" style="margin: 0 3px;"></span>
                 </div>
-            `, // Added flexbox and nowrap for robust centering and display
+            `, // Added position:absolute, bottom, left, height, and line-height for robust centering and display
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
