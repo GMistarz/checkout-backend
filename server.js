@@ -407,8 +407,8 @@ app.get("/user-profile", requireAuth, async (req, res) => {
           email: user.email,
           role: user.role,
           company_id: user.companyId,
-          first_name: user.first_name,
-          last_name: user.last_name,
+          first_name: user.firstName,
+          last_name: user.lastName,
           phone: user.phone // Include phone number here
       });
   } else {
@@ -1105,6 +1105,18 @@ function generateOrderHtmlEmail(orderData) {
     const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
+    // Determine if "RUSH" indicator is needed
+    const shippingMethodLower = orderData.shippingMethod.toLowerCase();
+    const isRush = shippingMethodLower.includes("next day air") ||
+                   shippingMethodLower.includes("saturday") ||
+                   shippingMethodLower.includes("overnight");
+
+    const rushHtml = isRush ? `
+        <td style="text-align: right; vertical-align: middle; padding: 0;">
+            <span style="font-family: Arial, sans-serif; font-size: 35px; font-weight: bold; color: red; background-color: transparent;">RUSH:</span>
+        </td>
+    ` : '';
+
     return `
         <!-- Main Container for Email Content -->
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #000000;">
@@ -1129,7 +1141,14 @@ function generateOrderHtmlEmail(orderData) {
 
             <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
-            <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+                <tr>
+                    <td style="text-align: left; vertical-align: middle; padding: 0;">
+                        <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
+                    </td>
+                    ${rushHtml}
+                </tr>
+            </table>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
