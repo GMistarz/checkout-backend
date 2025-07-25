@@ -1070,6 +1070,9 @@ function generateOrderHtmlEmail(orderData) {
     }).join('');
 
     // NEW: Add Third Party Billing Details if shippingMethod is "Third Party Billing"
+    console.log("generateOrderHtmlEmail: Checking shippingMethod:", orderData.shippingMethod); // Debug log
+    console.log("generateOrderHtmlEmail: Checking thirdPartyDetails:", JSON.stringify(orderData.thirdPartyDetails, null, 2)); // Debug log
+
     if (orderData.shippingMethod === "Third Party Billing" && orderData.thirdPartyDetails) {
         const thirdParty = orderData.thirdPartyDetails;
         itemsHtml += `
@@ -1087,6 +1090,9 @@ function generateOrderHtmlEmail(orderData) {
                 <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
             </tr>
         `;
+        console.log("generateOrderHtmlEmail: Third Party Billing Details HTML added."); // Debug log
+    } else {
+        console.log("generateOrderHtmlEmail: Third Party Billing Details not added. Condition not met."); // Debug log
     }
 
 
@@ -1239,6 +1245,10 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     // but can be kept for other logging/database purposes if needed.
 
     console.log("Received order submission request with body:", JSON.stringify(req.body, null, 2));
+    // NEW: Debugging logs for shippingMethod and thirdPartyDetails
+    console.log("submit-order: Received shippingMethod:", shippingMethod);
+    console.log("submit-order: Received thirdPartyDetails:", JSON.stringify(thirdPartyDetails, null, 2));
+
 
     if (!orderedByEmail || !orderedByPhone || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
         console.error("Validation Error: Missing required order fields or empty cart.", { orderedByEmail, orderedByPhone, poNumber, billingAddress, shippingAddress, shippingMethod, items });
