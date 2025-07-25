@@ -1057,14 +1057,14 @@ function generateOrderHtmlEmail(orderData) {
         let formattedDescription = item.description ? item.description.replace('**', '<br>**') : '';
         return `
             <tr>
-                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
-                <td style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; color: #000000; vertical-align: top;">
                     <strong>${item.partNo}</strong><br>
                     <small>${formattedDescription}</small>
                     ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
                 </td>
-                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
         `;
     }).join('');
@@ -1073,22 +1073,27 @@ function generateOrderHtmlEmail(orderData) {
     console.log("generateOrderHtmlEmail: Checking shippingAccountType:", orderData.shippingAccountType); 
     console.log("generateOrderHtmlEmail: Checking thirdPartyDetails:", JSON.stringify(orderData.thirdPartyDetails, null, 2));
 
+    // Conditional country display logic
+    const thirdParty = orderData.thirdPartyDetails;
+    let thirdPartyCountryHtml = '';
+    if (thirdParty && thirdParty.third_party_country && 
+        !["USA", "United States", "United States of America"].includes(thirdParty.third_party_country.trim())) {
+        thirdPartyCountryHtml = `<p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_country}</p>`;
+    }
+
     // FIX: Changed condition to check shippingAccountType instead of shippingMethod
-    if (orderData.shippingAccountType === "Third Party Billing" && orderData.thirdPartyDetails) {
-        const thirdParty = orderData.thirdPartyDetails;
+    // Adjusted font size to 12px, removed labels, and removed Account #.
+    if (orderData.shippingAccountType === "Third Party Billing" && thirdParty) {
         itemsHtml += `
             <tr>
-                <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; color: #000000; vertical-align: top;">
-                    <p style="font-weight: bold; margin-bottom: 5px;">Third Party Billing Details:</p>
-                    <p style="margin: 0;"><strong>Company:</strong> ${thirdParty.third_party_company_name || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>Account #:</strong> ${thirdParty.third_party_carrier_account || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>Address:</strong> ${thirdParty.third_party_address1 || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>City:</strong> ${thirdParty.third_party_city || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>State:</strong> ${thirdParty.third_party_state || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>Zip:</strong> ${thirdParty.third_party_zip || 'N/A'}</p>
-                    <p style="margin: 0;"><strong>Country:</strong> ${thirdParty.third_party_country || 'N/A'}</p>
+                <td colspan="2" style="border: 1px solid #ccc; padding: 8px; color: #000000; vertical-align: top;">
+                    <p style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">Third Party Billing Details:</p>
+                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_name || ''}</p>
+                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_address1 || ''}</p>
+                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_city || ''}, ${thirdParty.third_party_state || ''} ${thirdParty.third_party_zip || ''}</p>
+                    ${thirdPartyCountryHtml}
                 </td>
-                <td colspan="2" style="border: 1px solid #dcdcdc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
+                <td colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
             </tr>
         `;
         console.log("generateOrderHtmlEmail: Third Party Billing Details HTML added.");
@@ -1122,13 +1127,13 @@ function generateOrderHtmlEmail(orderData) {
                 </tr>
             </table>
 
-            <hr style="border: none; border-top: 1px solid #dcdcdc; margin: 5px 0 10px 0;">
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
             <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0 0 15px 0;"><strong>PO#:</strong> ${orderData.poNumber}</p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
                         <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
@@ -1139,7 +1144,7 @@ function generateOrderHtmlEmail(orderData) {
                             ${orderData.orderedByPhone && orderData.orderedByPhone.trim() !== '' ? `Phone: ${orderData.orderedByPhone}` : ''}
                         </p>
                     </td>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #dcdcdc; border-radius: 5px; box-sizing: border-box;">
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || ''}</p>
@@ -1154,10 +1159,10 @@ function generateOrderHtmlEmail(orderData) {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number / Description / Note</th>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; width: 15%; color: #000000;">Unit Price</th>
-                        <th style="border: 1px solid #dcdcdc; padding: 8px; background-color: #e0e0e0; text-align: right; color: #000000;">Total</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; color: #000000;">Part Number / Description / Note</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right; width: 15%; color: #000000;">Unit Price</th>
+                        <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: right; color: #000000;">Total</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1167,7 +1172,7 @@ function generateOrderHtmlEmail(orderData) {
             <p style="font-weight: bold; text-align: right; margin-bottom: 5px; color: #000000;">Item Count: ${totalQuantity}</p>
             <p style="font-weight: bold; text-align: right; margin-top: 0; color: #000000;">Total Price: $${totalPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
 
-            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #dcdcdc; color: #000000; font-size: 10px;">
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ccc; color: #000000; font-size: 10px;">
                 <strong>Chicago Stainless Equipment, Inc.</strong><br>
                 1280 SW 34th St<br>
                 Palm City, FL 34990 USA<br>
