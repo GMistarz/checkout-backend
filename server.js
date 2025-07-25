@@ -1114,7 +1114,7 @@ function generateOrderHtmlEmail(orderData) {
     // Updated RUSH styling and positioning
     const rushHtml = isRush ? `
         <td style="width: 50%; text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 45px; font-weight: bold; color: red; background-color: transparent;">RUSH</span>
+            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 30px !important; font-weight: bold !important; color: red; background-color: transparent; white-space: nowrap;">RUSH</span>
         </td>
     ` : `<td style="width: 50%; padding: 0;"></td>`; // Empty cell to maintain layout if no RUSH
 
@@ -1234,10 +1234,10 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
-                <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
-                    Page <span class="pageNumber"></span> / <span class="totalPages"></span>
+                <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555; display: flex; justify-content: center; align-items: center; white-space: nowrap;">
+                    Page <span class="pageNumber" style="margin: 0 3px;"></span> / <span class="totalPages" style="margin: 0 3px;"></span>
                 </div>
-            `, // Using Puppeteer's native placeholders directly
+            `, // Added flexbox and nowrap for robust centering and display
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
