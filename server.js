@@ -407,8 +407,8 @@ app.get("/user-profile", requireAuth, async (req, res) => {
           email: user.email,
           role: user.role,
           company_id: user.companyId,
-          first_name: user.firstName,
-          last_name: user.lastName,
+          first_name: user.first_name,
+          last_name: user.last_name,
           phone: user.phone // Include phone number here
       });
   } else {
@@ -1215,8 +1215,22 @@ async function generatePdfFromHtml(htmlContent) {
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
                 <div style="font-size: 10px; text-align: center; width: 100%; margin: 0; padding: 0; color: #555;">
-                    Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+                    Page <span class="pageNumber"></span> / <span class="totalPages"></span>
                 </div>
+                <script>
+                    // This script runs within the PDF's rendering context
+                    function updatePageNumbers() {
+                        const pageNumberSpan = document.querySelector('.pageNumber');
+                        const totalPagesSpan = document.querySelector('.totalPages');
+                        if (pageNumberSpan && totalPagesSpan) {
+                            // window.print has properties available during PDF generation
+                            pageNumberSpan.textContent = window.print ? window.print.page : '1'; // Fallback to 1
+                            totalPagesSpan.textContent = window.print ? window.print.pages : '1'; // Fallback to 1
+                        }
+                    }
+                    // Call it immediately
+                    updatePageNumbers();
+                </script>
             `,
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
