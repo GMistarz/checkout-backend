@@ -1427,14 +1427,23 @@ async function initializeDatabase() {
         `);
         console.log("'shipto_addresses' table checked/created.");
 
-        // NEW: Add carrier_account column if it doesn't exist (for existing databases)
-        // This ALTER TABLE statement ensures the column is added even if the table already existed
-        // before the 'carrier_account' column was introduced in the CREATE TABLE statement above.
-        await conn.execute(`
-            ALTER TABLE shipto_addresses
-            ADD COLUMN IF NOT EXISTS carrier_account VARCHAR(255);
-        `);
-        console.log("'carrier_account' column checked/added to 'shipto_addresses' table.");
+        // NEW: Check if 'carrier_account' column exists before adding it
+        const [columnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'shipto_addresses' AND COLUMN_NAME = 'carrier_account';
+        `, [dbConnectionConfig.database]);
+
+        if (columnCheck.length === 0) {
+            // Column does not exist, so add it
+            await conn.execute(`
+                ALTER TABLE shipto_addresses
+                ADD COLUMN carrier_account VARCHAR(255);
+            `);
+            console.log("'carrier_account' column added to 'shipto_addresses' table.");
+        } else {
+            console.log("'carrier_account' column already exists in 'shipto_addresses' table.");
+        }
 
 
         // Create 'orders' table if not exists
