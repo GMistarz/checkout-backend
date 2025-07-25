@@ -165,7 +165,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
         requestedCompanyId = parseInt(req.params.companyId, 10);
     } else if (req.body.companyId) { // For POST routes like /api/shipto (add new)
         requestedCompanyId = parseInt(req.body.companyId, 10);
-    } else if (req.params.addressId) { // For PUT/DELETE/SET_DEFAULT on /api/shipto/:addressId
+    } else if (req.params.addressId) { // For PUT/DELETE/SET_DEFAULT/UPDATE_CARRIER_ACCOUNT on /api/shipto/:addressId
         let conn;
         try {
             conn = await mysql.createConnection(dbConnectionConfig);
@@ -203,6 +203,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
 
 // Function to send order notification email (Admin)
 async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
+
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
@@ -793,7 +794,8 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default FROM shipto_addresses WHERE company_id = ?", [companyId]);
+        // MODIFIED: Added carrier_account to the SELECT statement
+        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default, carrier_account FROM shipto_addresses WHERE company_id = ?", [companyId]);
 
         res.json(addresses);
     }
@@ -807,7 +809,7 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
 });
 
 app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => {
-    const { companyId, name, company_name, address1, city, state, zip, country, is_default } = req.body;
+    const { companyId, name, company_name, address1, city, state, zip, country, is_default, carrier_account } = req.body; // Added carrier_account
 
     if (!companyId || !name || !address1 || !city || !state || !zip) {
         return res.status(400).json({ error: "Missing required fields (Company ID, Contact Name, Address, City, State, Zip)." });
@@ -822,9 +824,9 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => {
             );
         }
         const [result] = await conn.execute(
-            `INSERT INTO shipto_addresses (company_id, name, company_name, address1, city, state, zip, country, is_default)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [companyId, name, company_name || null, address1, city, state, zip, country, is_default ? 1 : 0]
+            `INSERT INTO shipto_addresses (company_id, name, company_name, address1, city, state, zip, country, is_default, carrier_account)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, // Added carrier_account column
+            [companyId, name, company_name || null, address1, city, state, zip, country, is_default ? 1 : 0, carrier_account || null] // Added carrier_account value
         );
         res.status(201).json({ id: result.insertId, message: "Address added successfully" });
     } catch (err) {
@@ -837,13 +839,13 @@ app.post("/api/shipto", authorizeCompanyAccess, async (req, res) => {
 
 app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => {
     const { addressId } = req.params;
-    const { name, company_name, address1, city, state, zip, country } = req.body;
+    const { name, company_name, address1, city, state, zip, country, carrier_account } = req.body; // Added carrier_account
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         await conn.execute(
-            `UPDATE shipto_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ? WHERE id = ?`,
-            [name, company_name || null, address1, city, state, zip, country, addressId]
+            `UPDATE shipto_addresses SET name = ?, company_name = ?, address1 = ?, city = ?, state = ?, zip = ?, country = ?, carrier_account = ? WHERE id = ?`, // Added carrier_account update
+            [name, company_name || null, address1, city, state, zip, country, carrier_account || null, addressId] // Added carrier_account value
         );
         res.json({ message: "Address updated successfully" });
     } catch (err) {
@@ -853,6 +855,28 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => {
         if (conn) conn.end();
     }
 });
+
+// NEW ENDPOINT: Update carrier_account for a specific shipto_address
+app.put("/api/shipto/:addressId/update-carrier-account", authorizeCompanyAccess, async (req, res) => {
+    const { addressId } = req.params;
+    const { carrierAccount } = req.body; // Expecting carrierAccount in the body
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.execute(
+            `UPDATE shipto_addresses SET carrier_account = ? WHERE id = ?`,
+            [carrierAccount || null, addressId] // Set to null if carrierAccount is empty/undefined
+        );
+        res.json({ message: "Carrier account updated successfully for shipping address." });
+    } catch (err) {
+        console.error("Error updating carrier account for ship-to address:", err);
+        res.status(500).json({ error: "Failed to update carrier account for shipping address." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 
 app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req, res) => {
     const { addressId } = req.params;
@@ -1184,8 +1208,8 @@ async function generatePdfFromHtml(htmlContent) {
 
 
 app.post("/submit-order", requireAuth, async (req, res) => {
-    // Destructure new fields: orderedByEmail, orderedByPhone
-    const { poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, carrierAccount, items } = req.body;
+    // Destructure new fields: orderedByEmail, orderedByPhone, shippingAccountType, thirdPartyDetails
+    const { poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, carrierAccount, thirdPartyDetails, items } = req.body;
     const userId = req.session.user.id;
     const companyId = req.session.user.companyId;
     // userEmail and userPhone from session are no longer primarily used for the PDF content
@@ -1237,11 +1261,19 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             };
         });
 
+        // Determine the carrier account to save based on shippingAccountType
+        let finalCarrierAccountForDb = null;
+        if (shippingAccountType === "Collect") {
+            finalCarrierAccountForDb = carrierAccount;
+        } else if (shippingAccountType === "Third Party Billing" && thirdPartyDetails) {
+            finalCarrierAccountForDb = thirdPartyDetails.third_party_carrier_account;
+        }
+
         // Insert into orders table, matching the provided schema exactly
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
              VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, JSON.stringify(orderItemsWithCalculatedPrices)] // Store calculated items
+            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices)] // Store calculated items and finalCarrierAccountForDb
         );
         const orderId = orderResult.insertId;
 
@@ -1249,7 +1281,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Generate HTML for the email body and PDF
         const orderDetailsForEmail = {
-            poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount,
+            poNumber, orderedBy, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, shippingMethod, carrierAccount: finalCarrierAccountForDb, // Use the final value
             items: orderItemsWithCalculatedPrices, // Use the items with calculated prices for PDF/email
             terms: company.terms, // Pass company terms from fetched company data
         };
@@ -1388,6 +1420,7 @@ async function initializeDatabase() {
                 zip VARCHAR(20) NOT NULL,
                 country VARCHAR(255),
                 is_default BOOLEAN DEFAULT FALSE,
+                carrier_account VARCHAR(255), -- NEW: Added carrier_account column
                 FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
