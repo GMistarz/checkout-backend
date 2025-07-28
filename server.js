@@ -1112,11 +1112,11 @@ function generateOrderHtmlEmail(orderData) {
                    shippingMethodLower.includes("overnight");
 
     // RUSH image HTML - positioned absolutely over the content
-    const rushImageHtml = isRush ? `
-        <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
-            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
-        </div>
-    ` : ''; // Empty if not rush
+//    const rushImageHtml = isRush ? `
+//        <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
+//            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
+//        </div>
+//    ` : ''; // Empty if not rush
 
     // Determine carrier logo
     let carrierLogoHtml = '';
@@ -1133,6 +1133,9 @@ function generateOrderHtmlEmail(orderData) {
     } else if (shippingMethodLower.includes("dhl")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}dhl.png" alt="DHL" style="${carrierLogoStyle}">`;
     }
+
+    // Conditional styling for rush order
+    const shipViaStyle = isRush ? 'background-color: yellow; padding: 2px 5px; border-radius: 3px;' : '';
 
 
     return `
@@ -1186,7 +1189,7 @@ function generateOrderHtmlEmail(orderData) {
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || ''}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>TAG#:</strong> ${orderData.tag || ''}</p>
-                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>Ship Via:</strong> ${orderData.shippingMethod} (${orderData.shippingAccountType})</p>
+                        <p style="margin: 7px 0; font-size: 12px; color: #000000;"><span style="${shipViaStyle}"><strong>Ship Via:</strong> ${orderData.shippingMethod} (${orderData.shippingAccountType})</span></p>
                         ${hasCarrierAccount ? `<p style="margin: 7px 0 0 0; font-size: 12px; color: #000000;"><strong>Carrier Account#:</strong> ${orderData.carrierAccount}</p>` : ''}
                     </td>
                 </tr>
