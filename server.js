@@ -1396,6 +1396,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         const [companyRows] = await conn.execute("SELECT id, name, discount, approved, terms FROM companies WHERE id = ?", [companyId]); // Fetch terms here
         if (companyRows.length === 0) {
             await conn.rollback();
+            console.error(`[submit-order] Company not found in DB for ID: ${companyId}. User session might be stale or invalid.`);
             return res.status(404).json({ error: "Company not found for the logged-in user." });
         }
         const company = companyRows[0];
@@ -1403,8 +1404,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         // IMPORTANT: Check company approval status before proceeding with order
         if (!company.approved) {
             await conn.rollback();
+            console.warn(`[submit-order] Order submission rejected: Company ID ${companyId} (${company.name}) is not approved.`);
             return res.status(403).json({ error: "Your company's registration is awaiting approval. Please allow 24-48 hours for review. You will receive an email notification once approved." });
         }
+        console.log(`[submit-order] Company ID ${companyId} (${company.name}) is approved. Proceeding with order submission.`);
+
 
         const discountFactor = (100 - (company.discount || 0)) / 100;
         let totalOrderPrice = 0;
@@ -1441,6 +1445,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, attn, tag, JSON.stringify(thirdPartyDetails), companyId] // Store calculated items and finalCarrierAccountForDb
         );
         const orderId = orderResult.insertId;
+        console.log(`[submit-order] Order ID ${orderId} inserted into database for company ID ${companyId}.`);
 
         await conn.commit();
 
