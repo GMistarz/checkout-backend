@@ -161,7 +161,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
 
     // Determine the companyId from the request based on route
     let requestedCompanyId = null;
-    if (req.params.companyId) { // For routes like /api/shipto/:companyId
+    if (req.params.companyId) { // For routes like /api/shipto/:companyId or /api/orders/:companyId
         requestedCompanyId = parseInt(req.params.companyId, 10);
     } else if (req.body.companyId) { // For POST routes like /api/shipto (add new)
         requestedCompanyId = parseInt(req.body.companyId, 10);
@@ -192,7 +192,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
         // Only apply this check if a specific companyId was requested in the URL/body
         // and it doesn't match the user's companyId, or if no companyId was found
         // but the route requires it (e.g., shipto management).
-        if (req.path.startsWith('/api/shipto/') || req.path === '/api/shipto') {
+        if (req.path.startsWith('/api/shipto/') || req.path === '/api/shipto' || req.path.startsWith('/api/orders/')) {
             return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
         }
     }
@@ -203,7 +203,6 @@ const authorizeCompanyAccess = async (req, res, next) => {
 
 // Function to send order notification email (Admin)
 async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
-
 
     let conn;
     try {
@@ -414,49 +413,6 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   } else {
       console.log("[User Profile Route] User not found in session (should be caught by requireAuth).");
       res.status(401).json({ error: "Not logged in" });
-  }
-});
-
-app.get("/user/company-details", requireAuth, async (req, res) => {
-  let userCompanyId = req.session.user.companyId;
-  console.log(`[User Company Details] User ID: ${req.session.user.id}, Company ID from session: ${userCompanyId}`);
-  console.log(`[User Company Details] Type of userCompanyId (before parse): ${typeof userCompanyId}`);
-
-  userCompanyId = parseInt(userCompanyId, 10);
-  console.log(`[User Company Details] Type of userCompanyId (after parse): ${typeof userCompanyId}, Value: ${userCompanyId}`);
-
-  if (isNaN(userCompanyId) || userCompanyId <= 0) {
-    console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
-    return res.status(404).json({ error: "No company associated with this user." });
-  }
-
-  let conn;
-  try {
-    console.log("[User Company Details] Attempting to create database connection...");
-    conn = await mysql.createConnection(dbConnectionConfig);
-    console.log("[User Company Details] Database connection established.");
-
-    const [companies] = await conn.execute(
-      "SELECT name, address1, city, state, zip, country, terms, discount, notes, approved, denied FROM companies WHERE id = ?",
-      [userCompanyId]
-    );
-    console.log("[User Company Details] Raw query result (companies array for specific ID):", companies);
-
-    if (companies.length === 0) {
-      console.error(`[User Company Details] Company not found in DB for ID: ${userCompanyId}. Query returned no rows.`);
-      return res.status(404).json({ error: "Company not found for this user." });
-    }
-    const company = companies[0];
-    console.log(`[User Company Details] Fetched company ID ${company.id}: approved=${company.approved}, denied=${company.denied}`); // NEW LOG
-    res.json(company);
-  } catch (err) {
-    console.error("Error in /user/company-details route:", err);
-    res.status(500).json({ error: "Failed to retrieve user's company details." });
-  } finally {
-    if (conn) {
-      conn.end();
-      console.log("[User Company Details] Database connection closed.");
-    }
   }
 });
 
@@ -1359,9 +1315,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // Insert into orders table, matching the provided schema exactly
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices)] // Store calculated items and finalCarrierAccountForDb
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, orderedByEmail, orderedByPhone, attn, tag, thirdPartyDetails, companyId)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)`, // Added new columns
+            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, attn, tag, JSON.stringify(thirdPartyDetails), companyId] // Store calculated items and finalCarrierAccountForDb
         );
         const orderId = orderResult.insertId;
 
@@ -1484,11 +1440,84 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     }
 });
 
+// NEW: Endpoint to fetch orders for a specific company
+app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
+    const { companyId } = req.params;
+    const { poNumber, startDate, endDate } = req.query; // Get filter parameters
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        let query = "SELECT id, poNumber, shippingMethod, items, date, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, carrierAccount, thirdPartyDetails FROM orders WHERE companyId = ?";
+        const params = [companyId];
+
+        if (poNumber) {
+            query += " AND poNumber LIKE ?";
+            params.push(`%${poNumber}%`);
+        }
+        if (startDate) {
+            query += " AND date >= ?";
+            params.push(startDate);
+        }
+        if (endDate) {
+            query += " AND date <= ?";
+            params.push(endDate);
+        }
+
+        query += " ORDER BY date DESC"; // Order by most recent first
+
+        const [orders] = await conn.execute(query, params);
+
+        // Parse JSON fields and ensure correct structure
+        const formattedOrders = orders.map(order => {
+            let parsedItems = [];
+            try {
+                parsedItems = JSON.parse(order.items);
+            } catch (e) {
+                console.error(`Error parsing items JSON for order ${order.id}:`, e);
+            }
+
+            let parsedThirdPartyDetails = {};
+            if (order.thirdPartyDetails) {
+                try {
+                    parsedThirdPartyDetails = JSON.parse(order.thirdPartyDetails);
+                } catch (e) {
+                    console.error(`Error parsing thirdPartyDetails JSON for order ${order.id}:`, e);
+                }
+            }
+
+            return {
+                id: order.id,
+                poNumber: order.poNumber,
+                shippingMethod: order.shippingMethod,
+                items: parsedItems,
+                date: order.date,
+                orderedByEmail: order.orderedByEmail,
+                orderedByPhone: order.orderedByPhone,
+                billingAddress: order.billingAddress,
+                shippingAddress: order.shippingAddress,
+                attn: order.attn,
+                tag: order.tag,
+                carrierAccount: order.carrierAccount,
+                thirdPartyDetails: parsedThirdPartyDetails
+            };
+        });
+
+        res.json(formattedOrders);
+    } catch (err) {
+        console.error("Error fetching order history:", err);
+        res.status(500).json({ error: "Failed to retrieve order history" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
   res.redirect("/admin-dashboard.html");
+
 });
 
 // Database Initialization Function
@@ -1586,10 +1615,67 @@ async function initializeDatabase() {
                 shippingMethod VARCHAR(255),
                 carrierAccount VARCHAR(255),
                 items JSON NOT NULL,
-                date DATETIME DEFAULT CURRENT_TIMESTAMP
+                date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                orderedByEmail VARCHAR(255),
+                orderedByPhone VARCHAR(50),
+                attn VARCHAR(255),
+                tag VARCHAR(255),
+                thirdPartyDetails JSON,
+                companyId INT,
+                FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE
             ) ENGINE=InnoDB;
         `);
         console.log("'orders' table checked/created.");
+
+        // NEW: Check if 'companyId' column exists in 'orders' table before adding it
+        const [ordersCompanyIdColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'companyId';
+        `, [dbConnectionConfig.database]);
+
+        if (ordersCompanyIdColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE orders
+                ADD COLUMN companyId INT,
+                ADD CONSTRAINT fk_company_id
+                FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE;
+            `);
+            console.log("'companyId' column added to 'orders' table with foreign key constraint.");
+        } else {
+            console.log("'companyId' column already exists in 'orders' table.");
+        }
+
+        // NEW: Check if 'orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails' columns exist in 'orders' table
+        const [ordersNewColumnsCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails');
+        `, [dbConnectionConfig.database]);
+
+        const existingOrderColumns = ordersNewColumnsCheck.map(row => row.COLUMN_NAME);
+
+        if (!existingOrderColumns.includes('orderedByEmail')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN orderedByEmail VARCHAR(255);`);
+            console.log("'orderedByEmail' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('orderedByPhone')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN orderedByPhone VARCHAR(50);`);
+            console.log("'orderedByPhone' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('attn')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN attn VARCHAR(255);`);
+            console.log("'attn' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('tag')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN tag VARCHAR(255);`);
+            console.log("'tag' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('thirdPartyDetails')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN thirdPartyDetails JSON;`);
+            console.log("'thirdPartyDetails' column added to 'orders' table.");
+        }
+
 
         // Create 'admin_settings' table if not exists
         await conn.execute(`
