@@ -1122,7 +1122,7 @@ function generateOrderHtmlEmail(orderData) {
     let carrierLogoHtml = '';
     const carrierLogoBaseUrl = 'https://www.chicagostainless.com/graphics/stamps/';
     // Adjusted max-height for better fit, removed absolute positioning as it will be in a flex container
-    const carrierLogoStyle = 'max-height: 40px; width: auto; display: block;'; 
+    const carrierLogoStyle = 'max-height: 50px; width: auto; display: block;'; 
 
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
