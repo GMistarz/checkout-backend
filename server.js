@@ -1114,7 +1114,7 @@ function generateOrderHtmlEmail(orderData) {
     // RUSH image HTML - positioned absolutely over the content
     const rushImageHtml = isRush ? `
         <div style="position: absolute; top: 250px; left: 50%; transform: translateX(-50%); z-index: 10;">
-            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" opacity: 0.5; style="max-width: 200px; height: auto; display: block; opacity: 0.7;">
+            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 200px; height: auto; display: block; opacity: 0.5;">
         </div>
     ` : ''; // Empty if not rush
 
