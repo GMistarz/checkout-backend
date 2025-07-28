@@ -1111,16 +1111,16 @@ function generateOrderHtmlEmail(orderData) {
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
-    // Updated RUSH styling and positioning
-    const rushHtml = isRush ? `
-        <td style="width: 50%; text-align: right; vertical-align: middle; padding: 0;">
-            <span style="font-family: 'Inter', Helvetica, Arial, Lucida, sans-serif; font-size: 30px !important; font-weight: 900 !important; color: red; background-color: transparent; white-space: nowrap;">RUSH</span>
-        </td>
-    ` : `<td style="width: 50%; padding: 0;"></td>`; // Empty cell to maintain layout if no RUSH
+    // RUSH image HTML - positioned absolutely over the content
+    const rushImageHtml = isRush ? `
+        <div style="position: absolute; top: 250px; left: 50%; transform: translateX(-50%); z-index: 10;">
+            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 200px; height: auto; display: block; opacity: 0.7;">
+        </div>
+    ` : ''; // Empty if not rush
 
     return `
         <!-- Main Container for Email Content -->
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #000000;">
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #000000; position: relative;">
 
             <!-- Header Section using Table for Layout -->
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
@@ -1147,7 +1147,7 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="width: 50%; text-align: left; vertical-align: middle; padding: 0;">
                         <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
                     </td>
-                    ${rushHtml}
+                    <td style="width: 50%; padding: 0;"></td> <!-- Empty cell as RUSH is now an image stamp -->
                 </tr>
             </table>
 
@@ -1174,6 +1174,8 @@ function generateOrderHtmlEmail(orderData) {
                     </td>
                 </tr>
             </table>
+
+            ${rushImageHtml} <!-- RUSH image stamp inserted here -->
 
             <h2 style="color: #000000; font-size: 20px;">Order Summary</h2>
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
