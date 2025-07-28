@@ -1437,10 +1437,10 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: "Thank you for placing an order with Chicago Stainless",
             html: `
-                <p>Dear ${orderedBy},</p>
+                <p>Dear ${req.session.user.firstName},</p>
                 <p>Thank you for your recent order with Chicago Stainless Equipment, Inc.</p>
                 <p>This email confirms that your order has been successfully placed.</p>
-                <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>Company Name:</strong> ${company.name}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
                 <p>A detailed confirmation of your order is attached as a PDF document for your records.</p>
                 <p>We appreciate your business!</p>
