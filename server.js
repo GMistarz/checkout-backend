@@ -1139,8 +1139,8 @@ function generateOrderHtmlEmail(orderData) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}dhl.png" alt="DHL" style="${carrierLogoStyle}">`;
     }
 
-    // Conditional styling for rush order
-    const shipViaStyle = isRush ? 'background-color: yellow; padding: 2px 5px; border-radius: 3px;' : '';
+    // Conditional styling for rush order - removed padding
+    const shipViaStyle = isRush ? 'background-color: yellow; border-radius: 3px;' : '';
 
 
     return `
