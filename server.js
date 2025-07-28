@@ -1396,7 +1396,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         }
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
-        const mailOptions = {
+        const adminMailOptions = {
             from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
 
             to: poEmailRecipient, // Email will be sent to the configured PO email address
@@ -1422,16 +1422,55 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             ] : []
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
+        transporter.sendMail(adminMailOptions, (error, info) => {
             if (error) {
-                console.error("Error sending order notification email:", error);
-                // This error should not prevent the frontend from receiving success
+                console.error("Error sending admin order notification email:", error);
             } else {
-                console.log("Order notification email sent:", info.response);
+                console.log("Admin order notification email sent:", info.response);
             }
         });
 
-        res.status(200).json({ message: "Order submitted successfully! Notification email sent.", orderId: orderId });
+        // NEW: Send confirmation email to the user
+        const userConfirmationMailOptions = {
+            from: "OrderDesk@ChicagoStainless.com",
+            to: orderedByEmail,
+            replyTo: "OrderDesk@ChicagoStainless.com",
+            subject: "Thank you for placing an order with Chicago Stainless",
+            html: `
+                <p>Dear ${orderedBy},</p>
+                <p>Thank you for your recent order with Chicago Stainless Equipment, Inc.</p>
+                <p>This email confirms that your order has been successfully placed.</p>
+                <p><strong>Order ID:</strong> ${orderId}</p>
+                <p><strong>PO Number:</strong> ${poNumber}</p>
+                <p>A detailed confirmation of your order is attached as a PDF document for your records.</p>
+                <p>We appreciate your business!</p>
+                <p>Sincerely,</p>
+                <p>The Chicago Stainless Equipment Team</p>
+                <p style="font-size: 10px; color: #555;">
+                    Chicago Stainless Equipment, Inc.<br>
+                    1280 SW 34th St, Palm City, FL 34990 USA<br>
+                    772-781-1441
+                </p>
+            `,
+            attachments: pdfBuffer ? [
+                {
+                    filename: `Order_${orderId}_${poNumber}.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ] : []
+        };
+
+        transporter.sendMail(userConfirmationMailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending user confirmation email:", error);
+            } else {
+                console.log("User confirmation email sent:", info.response);
+            }
+        });
+
+
+        res.status(200).json({ message: "Order submitted successfully! Notification emails sent.", orderId: orderId });
 
     } catch (err) {
         if (conn) {
