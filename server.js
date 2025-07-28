@@ -269,10 +269,10 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
                 <p>Hello Admin,</p>
                 <p>A new user has registered through the checkout page:</p>
                 <ul>
+                    <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
                     <li><strong>Name:</strong> ${firstName} ${lastName}</li>
                     <li><strong>Email:</strong> ${userEmail}</li>
                     <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
-                    <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
                     <li><strong>Role:</strong> ${role}</li>
                 </ul>
                 <p>Please log into the admin dashboard to review and approve the company.</p>
@@ -1003,7 +1003,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             return res.status(404).json({ error: "No users found for this company to send an email to." });
         }
         const userEmail = userRows[0].email;
-        const userName = userRows[0].first_name || "Valued Customer";
+        const userName = userRows[0].first_name;
 
         if (!process.env.EMAIL_USER) {
             console.error("EMAIL_USER environment variable is not set. Cannot send email.");
@@ -1405,9 +1405,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             html: `
                 <p>Hello,</p>
                 <p>A new order has been submitted through the www.ChicagoStainless.com checkout page.</p>
-                <p><strong>Order ID:</strong> ${orderId}</p>
-                <p><strong>Customer Email:</strong> ${orderedByEmail}</p>
+                <p><strong>Company Name:</strong> ${company.name}</p>
+                <p><strong>Ordered By:</strong> ${orderedBy}</p>
+                <p><strong>User Email:</strong> ${orderedByEmail}</p>
                 <p><strong>PO Number:</strong> ${poNumber}</p>
+                <p><strong>Shipping Method:</strong> ${shippingMethod}</p>
                 <p>Please find the detailed order information attached as a PDF.</p>
                 <p>Thank you.</p>
             `,
