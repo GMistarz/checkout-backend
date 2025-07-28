@@ -1111,12 +1111,17 @@ function generateOrderHtmlEmail(orderData) {
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
-    // RUSH image HTML - positioned absolutely over the content
-    const rushImageHtml = isRush ? `
+    // RUSH image HTML - positioned absolutely over the content (currently commented out)
+    // To re-enable, uncomment the block below and assign it to rushImageHtml.
+    /*
+    const rushImageHtmlContent = `
         <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
         </div>
-    ` : ''; // Empty if not rush
+    `;
+    */
+    const rushImageHtml = ''; // Keep this empty to hide the image for now.
+
 
     // Determine carrier logo
     let carrierLogoHtml = '';
