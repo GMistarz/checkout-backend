@@ -1121,8 +1121,8 @@ function generateOrderHtmlEmail(orderData) {
     // Determine carrier logo
     let carrierLogoHtml = '';
     const carrierLogoBaseUrl = 'https://www.chicagostainless.com/graphics/stamps/';
-    // Adjusted max-height for better fit, removed absolute positioning as it will be in a flex container
-    const carrierLogoStyle = 'max-height: 50px; width: auto; display: block;'; 
+    // Adjusted max-height for better fit, added absolute positioning and z-index
+    const carrierLogoStyle = 'max-height: 50px; width: auto; display: block; position: absolute; top: 380px; right: 20px; z-index: 100;'; 
 
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
@@ -1192,10 +1192,8 @@ function generateOrderHtmlEmail(orderData) {
 
             ${rushImageHtml} <!-- RUSH image stamp inserted here -->
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h2 style="color: #000000; font-size: 20px; margin: 0;">Order Summary</h2>
-                ${carrierLogoHtml}
-            </div>
+            <h2 style="color: #000000; font-size: 20px; margin: 0; margin-bottom: 10px;">Order Summary</h2>
+            ${carrierLogoHtml} <!-- Carrier logo now floats here -->
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
