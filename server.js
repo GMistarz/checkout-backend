@@ -1113,7 +1113,7 @@ function generateOrderHtmlEmail(orderData) {
 
     // RUSH image HTML - positioned absolutely over the content
     const rushImageHtml = isRush ? `
-        <div style="position: absolute; top: 350px; left: 50%; transform: translateX(-50%); z-index: 10;">
+        <div style="position: absolute; top: 250px; left: 50%; transform: translateX(-50%); z-index: 10;">
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 200px; height: auto; display: block; opacity: 0.5;">
         </div>
     ` : ''; // Empty if not rush
@@ -1121,7 +1121,8 @@ function generateOrderHtmlEmail(orderData) {
     // Determine carrier logo
     let carrierLogoHtml = '';
     const carrierLogoBaseUrl = 'https://www.chicagostainless.com/graphics/stamps/';
-    const carrierLogoStyle = 'max-width: 100px; height: auto; display: block;'; // Adjust max-width as needed
+    // Reduced max-width and added absolute positioning
+    const carrierLogoStyle = 'max-width: 70px; height: auto; display: block; position: absolute; top: 400px; right: 20px; z-index: 10;'; 
 
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
@@ -1191,10 +1192,9 @@ function generateOrderHtmlEmail(orderData) {
 
             ${rushImageHtml} <!-- RUSH image stamp inserted here -->
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h2 style="color: #000000; font-size: 20px; margin: 0;">Order Summary</h2>
-                ${carrierLogoHtml}
-            </div>
+            <h2 style="color: #000000; font-size: 20px; margin: 0; margin-bottom: 10px;">Order Summary</h2>
+            ${carrierLogoHtml} <!-- Carrier logo now floats here -->
+
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
