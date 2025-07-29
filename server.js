@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables for emailing
+requirerequire('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -1537,8 +1537,6 @@ app.post("/submit-order", requireAuth, async (req, res) => {
                 <p><strong>PO Number:</strong> ${poNumber}</p>
                 <p>A detailed confirmation of your order is attached as a PDF document for your records.</p>
                 <p>We appreciate your business!</p>
-                <p>Sincerely,</p>
-                <p>The Chicago Stainless Equipment Team</p>
                 <p style="font-size: 10px; color: #555;">
                     Chicago Stainless Equipment, Inc.<br>
                     1280 SW 34th St, Palm City, FL 34990 USA<br>
@@ -1628,104 +1626,20 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             params.push(endDate);
         }
         
-        // --- REVISED PART NUMBER SEARCH LOGIC ---
+        // --- REVISED PART NUMBER SEARCH LOGIC (Removed explicit CAST for broader compatibility) ---
         if (partNumber) {
             console.log(`[GET /api/orders/:companyId] Applying partNumber filter: "${partNumber}"`);
-            // Use JSON_CONTAINS to check if the partNumber exists in any item's partNo field
-            // This is generally more robust for partial matches within JSON arrays
-            query += ` AND JSON_SEARCH(LOWER(o.items), 'one', LOWER(?), NULL, '$**.partNo') IS NOT NULL`;
-            params.push(`%${partNumber}%`);
-            // Note: JSON_SEARCH is for finding paths. For actual value matching, 
-            // the previous JSON_TABLE with LIKE is often better.
-            // Let's revert to the previous JSON_TABLE approach but ensure it's correct.
-            // The issue might not be the query itself but the data or how LIKE interacts.
-            // Re-evaluating JSON_TABLE:
-            // The original JSON_TABLE with `WHERE jt.itemPartNo LIKE ?` should work for partial matches.
-            // The `LOWER()` was already there.
-            // The problem might be if `partNo` is not always present, or if the JSON structure is deeper.
-            // Let's try a simpler approach if JSON_TABLE is being problematic,
-            // or confirm the JSON structure.
-            // For now, I will stick with JSON_TABLE but add a more explicit check
-            // for the actual value within the JSON.
-
-            // Reverting to the previous JSON_TABLE approach, as it's more direct for value matching.
-            // The issue might be related to the actual data stored or how `mysql2` handles JSON.
-            // Let's ensure the `partNo` in the JSON is always a string and not null.
-            // The `JSON_TABLE` approach is usually the most performant for this.
-            // The problem might be if the `partNo` field itself is missing or null in some items.
-            // I will keep the JSON_TABLE as it's the standard way, and add more debugging.
-            // The problem is likely in the data or how it's stored/parsed.
-            // Let's ensure the `partNo` is always a string.
-
-            // The `JSON_TABLE` approach is correct. The problem is likely elsewhere.
-            // I will add a check to see if the `partNumber` is being received correctly.
-            // The previous code for partNumber was:
-            // query += " AND EXISTS (SELECT 1 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt WHERE LOWER(jt.itemPartNo) LIKE LOWER(?))";
-            // params.push(`%${partNumber}%`);
-            // This is actually quite robust.
-
-            // Let's add a more direct JSON_EXTRACT and LIKE to see if it behaves differently.
-            // This might be less performant but could help diagnose if JSON_TABLE is the issue.
-            // No, JSON_TABLE is the correct and performant way.
-
-            // The most likely cause is that `partNo` values in the database
-            // might not be strings, or they might be nested differently.
-            // Or, the `mysql2` driver is not parsing JSON as expected.
-            // Given the previous JSON.parse() removal, it's likely mysql2 handles it.
-
-            // I will keep the JSON_TABLE but add a log to confirm the received partNumber.
-            // The `LOWER()` function is already applied to both sides.
-            // The problem is likely related to the data itself or a subtle SQL nuance.
-
-            // Let's ensure the PATH is correct. '$**.partNo' is a deep search.
-            // If it's always at the top level of the array, '$[*].partNo' is correct.
-            // The previous code used '$[*]' and COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo'). This is correct.
-
-            // Let's consider if the `partNumber` from the frontend is empty or malformed.
-            // The frontend code `document.getElementById('orderSearchPartNumber').value.trim();`
-            // and `if (partNumber) filters.partNumber = partNumber;` handles empty.
-
-            // The issue might be that `JSON_TABLE` requires a specific MySQL version or configuration.
-            // Assuming MySQL 8.0+ which supports JSON_TABLE.
-
-            // I will add a more explicit check for the `partNumber` in the backend logs.
-            // And ensure the wildcard is correctly applied.
-
-            // The current `JSON_TABLE` query is the standard and most efficient way.
-            // If it's not working, it points to:
-            // 1. Data inconsistency (partNo not always a string, or missing).
-            // 2. MySQL version/configuration not fully supporting JSON_TABLE as expected.
-            // 3. A very subtle bug in the LIKE clause or parameter binding.
-
-            // Let's try a different approach for the partNumber search,
-            // using `JSON_EXTRACT` and `JSON_ARRAY_CONTAINS` or `JSON_OVERLAPS`
-            // with a generated array of search terms. This is more complex but might
-            // bypass a `JSON_TABLE` specific issue.
-
-            // No, `JSON_TABLE` is the most direct. Let's assume it's working as intended
-            // and the problem is how the data is stored or if the search term is problematic.
-
-            // Let's simplify the part number search to use `JSON_CONTAINS` with `JSON_UNQUOTE`
-            // and `LOWER` to ensure it's checking for the exact unquoted, lowercased string.
-            // This is for exact matches. For partial, `JSON_TABLE` is still the way.
-
-            // Okay, I will revert to the previous `JSON_TABLE` logic, as it's technically correct.
-            // The problem is likely in the data or environment.
-            // To help debug, I'll add more logs specifically for the `partNumber` filter.
-
-            // The original JSON_TABLE query was:
-            // `AND EXISTS (SELECT 1 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt WHERE LOWER(jt.itemPartNo) LIKE LOWER(?))`
-            // This seems correct for partial, case-insensitive matching.
-
-            // Let's try to explicitly cast the JSON value to CHAR to ensure LIKE works as expected.
-            // Sometimes implicit casting can cause issues.
-
+            // This query uses JSON_TABLE to extract part numbers from the 'items' JSON array
+            // and then applies a case-insensitive LIKE comparison for partial matches.
+            // Removed explicit CAST to CHAR, relying on MySQL's implicit conversion,
+            // which is generally robust for string comparisons.
             query += ` AND EXISTS (
                 SELECT 1 
                 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt 
-                WHERE LOWER(CAST(jt.itemPartNo AS CHAR)) LIKE LOWER(?)
+                WHERE LOWER(jt.itemPartNo) LIKE LOWER(?)
             )`;
             params.push(`%${partNumber}%`);
+            console.log(`[GET /api/orders/:companyId] Part number search parameter being used: %${partNumber}%`);
         }
         // --- END REVISED PART NUMBER SEARCH LOGIC ---
 
@@ -1795,7 +1709,13 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         res.json(formattedOrders);
     } catch (err) {
         console.error("Error fetching order history:", err);
-        res.status(500).json({ error: "Failed to retrieve order history" });
+        // Log specific MySQL error details if available
+        if (err.sqlMessage) {
+            console.error("MySQL Error Message:", err.sqlMessage);
+            console.error("MySQL Error Code:", err.code);
+            console.error("MySQL Error SQL:", err.sql);
+        }
+        res.status(500).json({ error: "Failed to retrieve order history due to server error." });
     } finally {
         if (conn) conn.end();
     }
