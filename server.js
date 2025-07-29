@@ -1626,22 +1626,9 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             params.push(endDate);
         }
         
-        // --- REVISED PART NUMBER SEARCH LOGIC (Removed explicit CAST for broader compatibility) ---
-        if (partNumber) {
-            console.log(`[GET /api/orders/:companyId] Applying partNumber filter: "${partNumber}"`);
-            // This query uses JSON_TABLE to extract part numbers from the 'items' JSON array
-            // and then applies a case-insensitive LIKE comparison for partial matches.
-            // Removed explicit CAST to CHAR, relying on MySQL's implicit conversion,
-            // which is generally robust for string comparisons.
-            query += ` AND EXISTS (
-                SELECT 1 
-                FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt 
-                WHERE LOWER(jt.itemPartNo) LIKE LOWER(?)
-            )`;
-            params.push(`%${partNumber}%`);
-            console.log(`[GET /api/orders/:companyId] Part number search parameter being used: %${partNumber}%`);
-        }
-        // --- END REVISED PART NUMBER SEARCH LOGIC ---
+        // --- REMOVED JSON_TABLE FROM SQL QUERY ---
+        // The partNumber filtering will now happen in Node.js after fetching.
+        // This avoids the MySQL syntax error related to JSON_TABLE.
 
         if (shippingMethod) {
             query += " AND o.shippingMethod LIKE ?";
@@ -1664,9 +1651,10 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         const [orders] = await conn.execute(query, params);
         console.log(`[GET /api/orders/:companyId] Found ${orders.length} orders for company ID: ${companyId}`);
 
-        const formattedOrders = orders.map(order => {
+        let formattedOrders = orders.map(order => {
             let parsedItems = [];
             console.log(`[GET /api/orders/:companyId] Raw items data for order ${order.id}:`, order.items);
+            // mysql2 driver automatically parses JSON columns, so no need for JSON.parse()
             parsedItems = order.items; 
             if (!Array.isArray(parsedItems)) {
                 console.warn(`Items for order ${order.id} is not an array, received:`, parsedItems);
@@ -1705,6 +1693,23 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 thirdPartyDetails: parsedThirdPartyDetails
             };
         });
+
+        // --- PART NUMBER FILTERING IN NODE.JS ---
+        if (partNumber) {
+            const searchTermLower = partNumber.toLowerCase();
+            console.log(`[GET /api/orders/:companyId] Applying Node.js partNumber filter for: "${searchTermLower}"`);
+            formattedOrders = formattedOrders.filter(order => {
+                // Ensure order.items is an array before trying to iterate
+                if (!Array.isArray(order.items)) {
+                    return false; // Skip orders with malformed items data
+                }
+                return order.items.some(item => 
+                    item.partNo && item.partNo.toLowerCase().includes(searchTermLower)
+                );
+            });
+            console.log(`[GET /api/orders/:companyId] Filtered down to ${formattedOrders.length} orders by part number.`);
+        }
+        // --- END PART NUMBER FILTERING IN NODE.JS ---
 
         res.json(formattedOrders);
     } catch (err) {
