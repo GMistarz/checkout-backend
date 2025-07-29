@@ -1603,12 +1603,9 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             query += " AND o.date <= ?";
             params.push(endDate);
         }
-        // NEW: Part Number filter - search within JSON items array using JSON_SEARCH for broader matching
+        // MODIFIED: Part Number filter - using JSON_TABLE for robust partial matching
         if (partNumber) {
-            // JSON_SEARCH finds the path to a value. If found, it's not NULL.
-            // 'one' means return after first match. '%' || ? || '%' for partial match.
-            // '$**.partNo' searches for 'partNo' key anywhere in the JSON document.
-            query += " AND JSON_SEARCH(o.items, 'one', ?, NULL, '$**.partNo') IS NOT NULL";
+            query += " AND EXISTS (SELECT 1 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt WHERE jt.itemPartNo LIKE ?)";
             params.push(`%${partNumber}%`); // Add wildcards for partial matching
         }
         // NEW: Shipping Method filter
