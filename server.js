@@ -80,9 +80,19 @@ const allowedOrigins = [
   "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
 ];
 
-// --- CORS Configuration (SIMPLIFIED) ---
+// --- CORS Configuration (MODIFIED to handle dynamic origin) ---
 const corsOptions = {
-  origin: allowedOrigins, // Directly use the array of allowed origins
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+      console.warn(msg); // Log disallowed origins
+      return callback(new Error(msg), false);
+    }
+    console.log(`CORS allowed origin: ${origin}`); // Log allowed origins
+    return callback(null, true);
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
