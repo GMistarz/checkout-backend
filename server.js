@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables for emailing
+requirerequire('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -1595,12 +1595,14 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             query += " AND o.poNumber LIKE ?";
             params.push(`%${poNumber}%`);
         }
+        // FIX: Use DATE() function for precise date comparison
         if (startDate) {
-            query += " AND o.date >= ?";
+            query += " AND DATE(o.date) >= ?";
             params.push(startDate);
         }
+        // FIX: Use DATE() function for precise date comparison
         if (endDate) {
-            query += " AND o.date <= ?";
+            query += " AND DATE(o.date) <= ?";
             params.push(endDate);
         }
         // MODIFIED: Part Number filter - using JSON_TABLE for robust partial matching
