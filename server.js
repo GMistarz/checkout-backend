@@ -1439,10 +1439,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         }
 
         // Insert into orders table, matching the provided schema exactly
+        // MODIFIED: Added orderedByName and shippingAddressId to the INSERT statement
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, orderedByEmail, orderedByPhone, attn, tag, thirdPartyDetails, companyId)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)`, // Added new columns
-            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, attn, tag, JSON.stringify(thirdPartyDetails), companyId] // Store calculated items and finalCarrierAccountForDb
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, orderedByEmail, orderedByPhone, attn, tag, thirdPartyDetails, companyId, shippingAddressId, orderedByName)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)`, // Added new columns
+            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, attn, tag, JSON.stringify(thirdPartyDetails), companyId, shippingAddressId, orderedBy] // Store calculated items and finalCarrierAccountForDb, shippingAddressId, and orderedBy
         );
         const orderId = orderResult.insertId;
         console.log(`[submit-order] Order ID ${orderId} inserted into database for company ID ${companyId}.`);
@@ -1566,32 +1567,55 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     }
 });
 
-// NEW: Endpoint to fetch orders for a specific company
+// NEW: Endpoint to fetch orders for a specific company with enhanced filters
 app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
     const { companyId } = req.params;
-    const { poNumber, startDate, endDate } = req.query; // Get filter parameters
-    console.log(`[GET /api/orders/:companyId] Fetching orders for company ID: ${companyId} with filters: PO=${poNumber}, StartDate=${startDate}, EndDate=${endDate}`);
+    // MODIFIED: Added orderedByName to query parameters
+    const { poNumber, startDate, endDate, partNumber, shippingMethod, shipToAddress, orderedByName } = req.query; // Get all filter parameters
+    console.log(`[GET /api/orders/:companyId] Fetching orders for company ID: ${companyId} with filters: PO=${poNumber}, StartDate=${startDate}, EndDate=${endDate}, PartNo=${partNumber}, ShippingMethod=${shippingMethod}, ShipToAddressId=${shipToAddress}, OrderedByName=${orderedByName}`);
 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        let query = "SELECT id, poNumber, shippingMethod, items, date, orderedByEmail, orderedByPhone, billingAddress, shippingAddress, attn, tag, carrierAccount, thirdPartyDetails FROM orders WHERE companyId = ?";
+        // MODIFIED: Added o.orderedByName and o.shippingAddressId to SELECT statement
+        let query = "SELECT o.id, o.poNumber, o.shippingMethod, o.items, o.date, o.orderedByEmail, o.orderedByPhone, o.billingAddress, o.attn, o.tag, o.carrierAccount, o.thirdPartyDetails, o.shippingAddressId, o.orderedByName, s.name AS shipToAddressName, s.address1 AS shipToAddress1, s.city AS shipToAddressCity, s.state AS shipToAddressState, s.zip AS shipToAddressZip, s.country AS shipToAddressCountry FROM orders o LEFT JOIN shipto_addresses s ON o.shippingAddressId = s.id WHERE o.companyId = ?";
         const params = [companyId];
 
         if (poNumber) {
-            query += " AND poNumber LIKE ?";
+            query += " AND o.poNumber LIKE ?";
             params.push(`%${poNumber}%`);
         }
         if (startDate) {
-            query += " AND date >= ?";
+            query += " AND o.date >= ?";
             params.push(startDate);
         }
         if (endDate) {
-            query += " AND date <= ?";
+            query += " AND o.date <= ?";
             params.push(endDate);
         }
+        // NEW: Part Number filter - search within JSON items array
+        if (partNumber) {
+            // This checks if any item in the JSON array contains the partNumber
+            query += " AND JSON_CONTAINS(o.items, JSON_ARRAY(JSON_OBJECT('partNo', ?)))";
+            params.push(partNumber);
+        }
+        // NEW: Shipping Method filter
+        if (shippingMethod) {
+            query += " AND o.shippingMethod LIKE ?";
+            params.push(`%${shippingMethod}%`);
+        }
+        // NEW: Ship To Address filter (by ID from dropdown)
+        if (shipToAddress) {
+            query += " AND o.shippingAddressId = ?";
+            params.push(shipToAddress);
+        }
+        // NEW: Ordered By Name filter
+        if (orderedByName) {
+            query += " AND o.orderedByName LIKE ?";
+            params.push(`%${orderedByName}%`);
+        }
 
-        query += " ORDER BY date DESC"; // Order by most recent first
+        query += " ORDER BY o.date DESC"; // Order by most recent first
 
         const [orders] = await conn.execute(query, params);
         console.log(`[GET /api/orders/:companyId] Found ${orders.length} orders for company ID: ${companyId}`);
@@ -1614,6 +1638,12 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 }
             }
 
+            // Reconstruct shippingAddress for display based on joined shipto_addresses data
+            let displayShippingAddress = order.shippingAddress; // Fallback to stored text
+            if (order.shipToAddressName) {
+                displayShippingAddress = `${order.shipToAddressName}\n${order.shipToAddress1}\n${order.shipToAddressCity}, ${order.shipToAddressState} ${order.shipToAddressZip} ${order.shipToAddressCountry}`;
+            }
+
             return {
                 id: order.id,
                 poNumber: order.poNumber,
@@ -1622,8 +1652,10 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 date: order.date,
                 orderedByEmail: order.orderedByEmail,
                 orderedByPhone: order.orderedByPhone,
+                orderedByName: order.orderedByName, // Include orderedByName
                 billingAddress: order.billingAddress,
-                shippingAddress: order.shippingAddress,
+                shippingAddress: displayShippingAddress, // Use constructed address
+                shippingAddressId: order.shippingAddressId, // Include shippingAddressId
                 attn: order.attn,
                 tag: order.tag,
                 carrierAccount: order.carrierAccount,
@@ -1745,11 +1777,14 @@ async function initializeDatabase() {
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 orderedByEmail VARCHAR(255),
                 orderedByPhone VARCHAR(50),
+                orderedByName VARCHAR(255), -- NEW: Added orderedByName column
                 attn VARCHAR(255),
                 tag VARCHAR(255),
                 thirdPartyDetails JSON,
                 companyId INT,
-                FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE
+                shippingAddressId INT, -- NEW: Added shippingAddressId column
+                FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE,
+                FOREIGN KEY (shippingAddressId) REFERENCES shipto_addresses(id) ON DELETE SET NULL -- New FK
             ) ENGINE=InnoDB;
         `);
         console.log("'orders' table checked/created.");
@@ -1773,11 +1808,31 @@ async function initializeDatabase() {
             console.log("'companyId' column already exists in 'orders' table.");
         }
 
-        // NEW: Check if 'orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails' columns exist in 'orders' table
+        // NEW: Check if 'shippingAddressId' column exists in 'orders' table before adding it
+        const [ordersShippingAddressIdColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME = 'shippingAddressId';
+        `, [dbConnectionConfig.database]);
+
+        if (ordersShippingAddressIdColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE orders
+                ADD COLUMN shippingAddressId INT,
+                ADD CONSTRAINT fk_shipping_address_id
+                FOREIGN KEY (shippingAddressId) REFERENCES shipto_addresses(id) ON DELETE SET NULL;
+            `);
+            console.log("'shippingAddressId' column added to 'orders' table with foreign key constraint.");
+        } else {
+            console.log("'shippingAddressId' column already exists in 'orders' table.");
+        }
+
+
+        // NEW: Check if 'orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails', 'orderedByName' columns exist in 'orders' table
         const [ordersNewColumnsCheck] = await conn.execute(`
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails');
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails', 'orderedByName');
         `, [dbConnectionConfig.database]);
 
         const existingOrderColumns = ordersNewColumnsCheck.map(row => row.COLUMN_NAME);
@@ -1801,6 +1856,10 @@ async function initializeDatabase() {
         if (!existingOrderColumns.includes('thirdPartyDetails')) {
             await conn.execute(`ALTER TABLE orders ADD COLUMN thirdPartyDetails JSON;`);
             console.log("'thirdPartyDetails' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('orderedByName')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN orderedByName VARCHAR(255);`);
+            console.log("'orderedByName' column added to 'orders' table.");
         }
 
 
