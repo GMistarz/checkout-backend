@@ -1582,7 +1582,9 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
     const { companyId } = req.params;
     // MODIFIED: Added orderedByName to query parameters
     const { poNumber, startDate, endDate, partNumber, shippingMethod, shipToAddress, orderedByName } = req.query; // Get all filter parameters
-    console.log(`[GET /api/orders/:companyId] Fetching orders for company ID: ${companyId} with filters: PO=${poNumber}, StartDate=${startDate}, EndDate=${endDate}, PartNo=${partNumber}, ShippingMethod=${shippingMethod}, ShipToAddressId=${shipToAddress}, OrderedByName=${orderedByName}`);
+    console.log(`[GET /api/orders/:companyId] Fetching orders for company ID: ${companyId}`);
+    console.log(`[GET /api/orders/:companyId] Filters: PO=${poNumber}, StartDate=${startDate}, EndDate=${endDate}, PartNo=${partNumber}, ShippingMethod=${shippingMethod}, ShipToAddressId=${shipToAddress}, OrderedByName=${orderedByName}`);
+
 
     let conn;
     try {
@@ -1606,8 +1608,9 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             params.push(endDate);
         }
         // MODIFIED: Part Number filter - using JSON_TABLE for robust partial matching
+        // Added LOWER() for case-insensitive search
         if (partNumber) {
-            query += " AND EXISTS (SELECT 1 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt WHERE jt.itemPartNo LIKE ?)";
+            query += " AND EXISTS (SELECT 1 FROM JSON_TABLE(o.items, '$[*]' COLUMNS (itemPartNo VARCHAR(255) PATH '$.partNo')) AS jt WHERE LOWER(jt.itemPartNo) LIKE LOWER(?))";
             params.push(`%${partNumber}%`); // Add wildcards for partial matching
         }
         // NEW: Shipping Method filter
@@ -1628,6 +1631,9 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
 
         query += " ORDER BY o.date DESC"; // Order by most recent first
 
+        console.log(`[GET /api/orders/:companyId] Final SQL Query: ${query}`);
+        console.log(`[GET /api/orders/:companyId] Query Parameters:`, params);
+
         const [orders] = await conn.execute(query, params);
         console.log(`[GET /api/orders/:companyId] Found ${orders.length} orders for company ID: ${companyId}`);
 
@@ -1636,7 +1642,7 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             let parsedItems = [];
             // REMOVED JSON.parse() as mysql2 already parses JSON columns
             // ADDED LOG: Log the raw items string from the database
-            console.log(`[GET /api/orders/:companyId] Raw items string for order ${order.id}:`, order.items);
+            console.log(`[GET /api/orders/:companyId] Raw items data for order ${order.id}:`, order.items);
             // The items are already parsed by mysql2, so direct assignment
             parsedItems = order.items; 
             // No need for try-catch around JSON.parse if mysql2 handles it,
@@ -1951,4 +1957,4 @@ initializeDatabase().then(() => {
 }).catch(err => {
     console.error("Failed to start server due to database initialization error:", err);
     process.exit(1);
-}); 
+});
