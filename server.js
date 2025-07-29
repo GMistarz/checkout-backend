@@ -1632,20 +1632,28 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         // Parse JSON fields and ensure correct structure
         const formattedOrders = orders.map(order => {
             let parsedItems = [];
+            // REMOVED JSON.parse() as mysql2 already parses JSON columns
             // ADDED LOG: Log the raw items string from the database
             console.log(`[GET /api/orders/:companyId] Raw items string for order ${order.id}:`, order.items);
-            try {
-                parsedItems = JSON.parse(order.items);
-            } catch (e) {
-                console.error(`Error parsing items JSON for order ${order.id}:`, e);
+            // The items are already parsed by mysql2, so direct assignment
+            parsedItems = order.items; 
+            // No need for try-catch around JSON.parse if mysql2 handles it,
+            // but keeping a check for non-array/null cases might be good
+            if (!Array.isArray(parsedItems)) {
+                console.warn(`Items for order ${order.id} is not an array, received:`, parsedItems);
+                parsedItems = []; // Default to empty array if not array
             }
 
+
             let parsedThirdPartyDetails = {};
+            // REMOVED JSON.parse() as mysql2 already parses JSON columns
             if (order.thirdPartyDetails) {
-                try {
-                    parsedThirdPartyDetails = JSON.parse(order.thirdPartyDetails);
-                } catch (e) {
-                    console.error(`Error parsing thirdPartyDetails JSON for order ${order.id}:`, e);
+                // The thirdPartyDetails are already parsed by mysql2, so direct assignment
+                parsedThirdPartyDetails = order.thirdPartyDetails;
+                // Check if it's an object, if not, default to empty object
+                if (typeof parsedThirdPartyDetails !== 'object' || parsedThirdPartyDetails === null) {
+                    console.warn(`ThirdPartyDetails for order ${order.id} is not an object, received:`, parsedThirdPartyDetails);
+                    parsedThirdPartyDetails = {};
                 }
             }
 
