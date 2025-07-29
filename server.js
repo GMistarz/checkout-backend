@@ -1,4 +1,4 @@
-require('dotenv').config(); // Loads environment variables for emailing
+requirerequire('dotenv').config(); // Loads environment variables for emailing
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
@@ -1098,7 +1098,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         }
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
 
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
@@ -1632,6 +1632,8 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         // Parse JSON fields and ensure correct structure
         const formattedOrders = orders.map(order => {
             let parsedItems = [];
+            // ADDED LOG: Log the raw items string from the database
+            console.log(`[GET /api/orders/:companyId] Raw items string for order ${order.id}:`, order.items);
             try {
                 parsedItems = JSON.parse(order.items);
             } catch (e) {
