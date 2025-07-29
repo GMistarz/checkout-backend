@@ -1670,6 +1670,14 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 }
             }
 
+            // Determine shippingAccountType based on available data
+            let determinedShippingAccountType = 'Prepaid'; // Default
+            if (parsedThirdPartyDetails && Object.keys(parsedThirdPartyDetails).length > 0) {
+                determinedShippingAccountType = 'Third Party Billing';
+            } else if (order.carrierAccount && order.carrierAccount.trim() !== '') {
+                determinedShippingAccountType = 'Collect';
+            }
+
             let displayShippingAddress = order.shippingAddress;
             if (order.shipToAddressName) {
                 displayShippingAddress = `${order.shipToAddressName}\n${order.shipToAddress1}\n${order.shipToAddressCity}, ${order.shipToAddressState} ${order.shipToAddressZip} ${order.shipToAddressCountry}`;
@@ -1690,7 +1698,8 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 attn: order.attn,
                 tag: order.tag,
                 carrierAccount: order.carrierAccount,
-                thirdPartyDetails: parsedThirdPartyDetails
+                thirdPartyDetails: parsedThirdPartyDetails,
+                shippingAccountType: determinedShippingAccountType // Add the determined type
             };
         });
 
