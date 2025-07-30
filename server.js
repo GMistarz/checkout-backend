@@ -442,6 +442,79 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   }
 });
 
+// NEW: Endpoint to update user profile
+app.put("/user/update-profile", requireAuth, async (req, res) => {
+    const { firstName, lastName, email, phone, currentPassword, newPassword } = req.body;
+    const userId = req.session.user.id; // Get user ID from session
+    console.log(`[PUT /user/update-profile] Attempting to update profile for user ID: ${userId}`);
+
+    if (!firstName || !lastName || !email || !currentPassword) {
+        console.warn("[PUT /user/update-profile] Missing required fields for profile update.");
+        return res.status(400).json({ error: "First Name, Last Name, Email, and Current Password are required." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+
+        // 1. Verify current password
+        const [users] = await conn.execute("SELECT password FROM users WHERE id = ?", [userId]);
+        const user = users[0];
+        if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+            console.warn(`[PUT /user/update-profile] Invalid current password for user ID: ${userId}`);
+            return res.status(401).json({ error: "Invalid current password." });
+        }
+
+        // 2. Check if new email is already in use by another user
+        const [existingEmailUsers] = await conn.execute("SELECT id FROM users WHERE email = ? AND id != ?", [email, userId]);
+        if (existingEmailUsers.length > 0) {
+            console.warn(`[PUT /user/update-profile] Email ${email} already in use by another user.`);
+            return res.status(409).json({ error: "This email is already registered to another account." });
+        }
+
+        // 3. Prepare update query
+        const fieldsToUpdate = [];
+        const values = [];
+
+        fieldsToUpdate.push("first_name = ?"); values.push(firstName);
+        fieldsToUpdate.push("last_name = ?"); values.push(lastName);
+        fieldsToUpdate.push("email = ?"); values.push(email);
+        fieldsToUpdate.push("phone = ?"); values.push(phone || null); // Allow phone to be null
+
+        if (newPassword) {
+            if (newPassword.length < 3) {
+                console.warn("[PUT /user/update-profile] New password is too short.");
+                return res.status(400).json({ error: "New password must be at least 3 characters long." });
+            }
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            fieldsToUpdate.push("password = ?"); values.push(hashedPassword);
+        }
+
+        const query = `UPDATE users SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+        values.push(userId);
+
+        await conn.execute(query, values);
+        console.log(`[PUT /user/update-profile] User ID ${userId} profile updated in DB.`);
+
+        // 4. Update session data
+        req.session.user.firstName = firstName;
+        req.session.user.lastName = lastName;
+        req.session.user.email = email;
+        req.session.user.phone = phone;
+        // No need to update password in session, as it's not stored plain text
+
+        console.log(`[PUT /user/update-profile] Session updated for user ID: ${userId}`);
+        res.json({ message: "Profile updated successfully" });
+
+    } catch (err) {
+        console.error("Error updating user profile:", err);
+        res.status(500).json({ error: "Failed to update profile due to server error." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+
 app.get("/user/company-details", requireAuth, async (req, res) => {
   console.log(`[User Company Details] Route hit for user: ${req.session.user.email}`);
   let userCompanyId = req.session.user.companyId;
