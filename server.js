@@ -72,18 +72,28 @@ const sessionStoreOptions = {
 const sessionStore = new MySQLStore(sessionStoreOptions);
 
 
-// Removed hardcoded allowedOrigins array and dynamic origin function
-// const allowedOrigins = [
-//   "http://localhost:8080",
-//   "http://localhost:3000",
-//   "https://checkout-frontend.onrender.com",
-//   "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
-// ];
+// --- CORS Configuration (MODIFIED to handle dynamic origin for credentials) ---
+const allowedOrigins = [
+  "http://localhost:8080", // For local development
+  "http://localhost:3000", // For local development
+  "https://checkout-frontend.onrender.com", // Your Render frontend URL
+  "https://www.chicagostainless.com", // Your production domain
+  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog" // Example SCF URL
+];
 
-// --- CORS Configuration (MODIFIED to allow all origins for development/testing) ---
 const corsOptions = {
-  origin: '*', // Allow all origins for development/testing
-  credentials: true,
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
+      console.warn(msg); // Log disallowed origins
+      return callback(new Error(msg), false);
+    }
+    console.log(`CORS allowed origin: ${origin}`); // Log allowed origins
+    return callback(null, true);
+  },
+  credentials: true, // IMPORTANT: Allows cookies/sessions to be sent
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
@@ -422,8 +432,8 @@ app.get("/user-profile", requireAuth, async (req, res) => {
           email: user.email,
           role: user.role,
           company_id: user.companyId,
-          first_name: user.first_name,
-          last_name: user.last_name,
+          first_name: user.firstName,
+          last_name: user.lastName,
           phone: user.phone // Include phone number here
       });
   } else {
@@ -1657,7 +1667,6 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 o.billingAddress, 
                 o.attn, 
                 o.tag, 
-
                 o.carrierAccount, 
                 o.thirdPartyDetails, 
                 o.shippingAddressId, 
