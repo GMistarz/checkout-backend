@@ -373,6 +373,52 @@ async function sendCompanyApprovalEmail(companyId) {
 
 // --- Authentication Routes ---
 
+// NEW: Admin Login Route
+app.post("/admin-login", async (req, res) => {
+    const { email, password } = req.body;
+    let conn;
+    console.log(`[Admin Login Route] Attempting login for email: ${email}`);
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, password, company_id FROM users WHERE email = ? AND role = 'admin'", [email]);
+        const user = users[0];
+
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            console.log("[Admin Login Route] Invalid credentials or not an admin.");
+            return res.status(401).json({ error: "Invalid credentials or not authorized as admin" });
+        }
+
+        req.session.user = {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            companyId: user.company_id,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            phone: user.phone
+        };
+        console.log(`[Admin Login Success] req.session.user set for admin: ${JSON.stringify(req.session.user)}`);
+        res.json({ message: "Admin login successful", role: user.role });
+
+    } catch (err) {
+        console.error("Admin login error:", err);
+        res.status(500).json({ error: "Admin login failed due to server error" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// NEW: Admin Check Auth Route
+app.get("/admin/check-auth", (req, res) => {
+    console.log(`[Admin Check Auth] Session user: ${req.session.user ? req.session.user.email : 'none'}, Role: ${req.session.user ? req.session.user.role : 'none'}`);
+    if (req.session.user && req.session.user.role === 'admin') {
+        res.status(200).json({ authenticated: true, role: 'admin' });
+    } else {
+        res.status(401).json({ authenticated: false, message: "Not authenticated as admin" });
+    }
+});
+
+
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn;
@@ -1335,7 +1381,7 @@ function generateOrderHtmlEmail(orderData) {
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <tr>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Bill To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.billingAddress}</p>
                         <p style="margin: 10px 0; font-size: 12px; color: #000000;"><strong>Terms:</strong> ${orderData.terms || 'N/A'}</p>
@@ -1346,7 +1392,7 @@ function generateOrderHtmlEmail(orderData) {
                             ${orderData.orderedByPhone && orderData.orderedByPhone.trim() !== '' ? `Phone: ${orderData.orderedByPhone}` : ''}
                         </p>
                     </td>
-                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
+                    <td style="width: 50%; vertical-align: top; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box;">
                         <h2 style="margin-top: 0; color: #000000; font-size: 16px; font-weight: bold; margin-bottom: 5px; background-color: #e0e0e0; padding: 5px;"><strong>Ship To:</strong></h2>
                         <p style="white-space: pre-wrap; margin: 0; font-size: 12px; line-height: 1.4; color: #000000;">${orderData.shippingAddress}</p>
                         <p style="margin: 7px 0; font-size: 12px; color: #000000;"><strong>ATTN:</strong> ${orderData.attn || ''}</p>
