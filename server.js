@@ -72,27 +72,17 @@ const sessionStoreOptions = {
 const sessionStore = new MySQLStore(sessionStoreOptions);
 
 
-const allowedOrigins = [
-  "http://localhost:8080",
-  "http://localhost:3000",
-  "https://checkout-frontend.onrender.com",
-  "https://www.chicagostainless.com",
-  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
-];
+// Removed hardcoded allowedOrigins array and dynamic origin function
+// const allowedOrigins = [
+//   "http://localhost:8080",
+//   "http://localhost:3000",
+//   "https://checkout-frontend.onrender.com",
+//   "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog"
+// ];
 
-// --- CORS Configuration (MODIFIED to handle dynamic origin) ---
+// --- CORS Configuration (MODIFIED to allow all origins for development/testing) ---
 const corsOptions = {
-  origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
-      console.warn(msg); // Log disallowed origins
-      return callback(new Error(msg), false);
-    }
-    console.log(`CORS allowed origin: ${origin}`); // Log allowed origins
-    return callback(null, true);
-  },
+  origin: '*', // Allow all origins for development/testing
   credentials: true,
   optionsSuccessStatus: 200,
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -432,8 +422,8 @@ app.get("/user-profile", requireAuth, async (req, res) => {
           email: user.email,
           role: user.role,
           company_id: user.companyId,
-          first_name: user.firstName,
-          last_name: user.lastName,
+          first_name: user.first_name,
+          last_name: user.last_name,
           phone: user.phone // Include phone number here
       });
   } else {
@@ -1271,16 +1261,13 @@ function generateOrderHtmlEmail(orderData) {
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
-    // RUSH image HTML - positioned absolutely over the content (currently commented out)
-    // To re-enable, uncomment the block below and assign it to rushImageHtml.
-    /*
+    // RUSH image HTML - positioned absolutely over the content
     const rushImageHtmlContent = `
         <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
         </div>
     `;
-    */
-    const rushImageHtml = ''; // Keep this empty to hide the image for now.
+    const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
 
 
     // Determine carrier logo
@@ -1670,6 +1657,7 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 o.billingAddress, 
                 o.attn, 
                 o.tag, 
+
                 o.carrierAccount, 
                 o.thirdPartyDetails, 
                 o.shippingAddressId, 
