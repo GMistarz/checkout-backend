@@ -1312,7 +1312,7 @@ function generateOrderHtmlEmail(orderData) {
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     // Determine if "RUSH" indicator is needed
-    const shippingMethodLower = orderData.shippingMethod.toLowerCase();
+/*    const shippingMethodLower = orderData.shippingMethod.toLowerCase();
     const isRush = shippingMethodLower.includes("next day air") ||
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
@@ -1324,7 +1324,7 @@ function generateOrderHtmlEmail(orderData) {
         </div>
     `;
     const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
-
+*/
 
     // Determine carrier logo
     let carrierLogoHtml = '';
