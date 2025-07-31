@@ -1323,8 +1323,8 @@ function generateOrderHtmlEmail(orderData) {
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
         </div>
     `;
-/*    const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
-*/
+    const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
+
 
     // Determine carrier logo
     let carrierLogoHtml = '';
