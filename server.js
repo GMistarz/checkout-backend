@@ -1535,21 +1535,18 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         }
         console.log(`[submit-order] Company ID ${companyId} (${company.name}) is approved. Proceeding with order submission.`);
 
-
-        const discountFactor = (100 - (company.discount || 0)) / 100;
+        // MODIFICATION: The frontend now sends the final, pre-calculated net price.
+        // This backend logic will no longer apply a second discount. It will use the provided price as the final net price.
         let totalOrderPrice = 0;
-
-        // Calculate total price with discount applied (for internal record and PDF)
         const orderItemsWithCalculatedPrices = items.map(item => {
-            const listPrice = item.price;
-            const netPrice = listPrice * discountFactor;
+            const netPrice = item.price; // This is the correct net price from the frontend.
             const lineTotal = item.quantity * netPrice;
             totalOrderPrice += lineTotal;
             return {
                 partNo: item.partNo,
                 description: item.description,
                 quantity: item.quantity,
-                listPrice: listPrice,
+                listPrice: null, // We don't have the original list price, so we'll nullify it to avoid confusion.
                 netPrice: netPrice,
                 lineTotal: lineTotal,
                 note: item.note
