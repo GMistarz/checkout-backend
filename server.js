@@ -1312,18 +1312,21 @@ function generateOrderHtmlEmail(orderData) {
     const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
 
     // Determine if "RUSH" indicator is needed
-   const shippingMethodLower = orderData.shippingMethod.toLowerCase();
+    const shippingMethodLower = orderData.shippingMethod.toLowerCase();
     const isRush = shippingMethodLower.includes("next day air") ||
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
     // RUSH image HTML - positioned absolutely over the content
+    /*
     const rushImageHtmlContent = `
         <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
         </div>
     `;
     const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
+    */
+    const rushImageHtml = ''; // Set to empty string to disable the rush image. The 'isRush' constant is still used for highlighting the 'Ship Via' text.
 
 
     // Determine carrier logo
