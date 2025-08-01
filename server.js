@@ -1339,9 +1339,9 @@ function generateOrderHtmlEmail(orderData) {
 
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
-    } else if (shippingMethodLower.includes("ups")) {
+    } /*else if (shippingMethodLower.includes("ups")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}ups.png" alt="UPS" style="${carrierLogoStyle}">`;
-    } else if (shippingMethodLower.includes("dhl")) {
+    }*/ else if (shippingMethodLower.includes("dhl")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}dhl.png" alt="DHL" style="${carrierLogoStyle}">`;
     }
 
