@@ -1264,7 +1264,7 @@ function generateOrderHtmlEmail(orderData) {
         minute: '2-digit',
         second: '2-digit',
         hour12: true,
-        timeZone: 'America/New York'
+        timeZone: 'America/New_York'
     });
     
     // Determine if carrierAccount is present and not just whitespace
