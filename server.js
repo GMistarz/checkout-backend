@@ -1254,20 +1254,20 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
     // Helper function to generate HTML for the order email
     function generateOrderHtmlEmail(orderData) {
-        // NEW: Format the current date and time
-        const currentDateTime = new Date().toLocaleString('en-US', {
-            year: 'numeric',
-            month: 'short', // Changed to 'short' for abbreviated month (e.g., "Aug")
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'America/New_York' // Time zone for Palm City, FL (EDT in August)
-        });
+     // NEW: Format the current date and time
+     const currentDate = new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'America/New_York'
+    });
+    const currentTime = new Date().toLocaleString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'America/New_York'
+    });
 
-   // Split date and time for separate display
-    const [datePart, timePart] = currentDateTime.split(', '); // Splits "Aug 13, 2025, 02:10 PM" into ["Aug 13, 2025", "02:10 PM"]
-    
     // Determine if carrierAccount is present and not just whitespace
     const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
     
@@ -1376,8 +1376,8 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
                     <!-- Date and Time Cell -->
                     <td style="width: 95px; text-align: right; vertical-align: middle; padding: 0;">
                         <div style="font-size: 12px; color: #000000; line-height: 1.2;">
-                            <p style="margin: 0;">${datePart}</p>
-                            <p style="margin: 0;">${timePart}</p>
+                            <p style="margin: 0;">${currentDate}</p>
+                            <p style="margin: 0;">${currentTime}</p>
                         </div>
                     </td>
                 </tr>
