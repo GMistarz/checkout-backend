@@ -1252,20 +1252,21 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     }
 });
 
+    // Helper function to generate HTML for the order email
+    function generateOrderHtmlEmail(orderData) {
+        // NEW: Format the current date and time
+        const currentDateTime = new Date().toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short', // Changed to 'short' for abbreviated month (e.g., "Aug")
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/New_York' // Time zone for Palm City, FL (EDT in August)
+        });
 
-// Helper function to generate HTML for the order email
-function generateOrderHtmlEmail(orderData) {
-    // NEW: Format the current date and time
-    const currentDateTime = new Date().toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-        timeZone: 'America/New_York'
-    });
+   // Split date and time for separate display
+    const [datePart, timePart] = currentDateTime.split(', '); // Splits "Aug 13, 2025, 02:10 PM" into ["Aug 13, 2025", "02:10 PM"]
     
     // Determine if carrierAccount is present and not just whitespace
     const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
@@ -1372,15 +1373,15 @@ function generateOrderHtmlEmail(orderData) {
                     <td style="text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
                     </td>
-                    <!-- Empty Cell to Balance Logo Width -->
-                    <td style="width: 95px; padding: 0;">
-                        <!-- This cell helps optically center the title by matching the logo's width -->
+                    <!-- Date and Time Cell -->
+                    <td style="width: 95px; text-align: right; vertical-align: middle; padding: 0;">
+                        <div style="font-size: 12px; color: #000000; line-height: 1.2;">
+                            <p style="margin: 0;">${datePart}</p>
+                            <p style="margin: 0;">${timePart}</p>
+                        </div>
                     </td>
                 </tr>
             </table>
-
-            <!-- NEW: Date and Time Section -->
-            <p style="font-size: 14px; color: #000000; text-align: center; margin: 5px 0 10px 0;"><strong>Date:</strong> ${currentDateTime}</p>
 
             <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
