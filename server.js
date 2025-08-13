@@ -1255,6 +1255,18 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
 // Helper function to generate HTML for the order email
 function generateOrderHtmlEmail(orderData) {
+    // NEW: Format the current date and time
+    const currentDateTime = new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZone: 'America/Miami'
+    });
+    
     // Determine if carrierAccount is present and not just whitespace
     const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
     
@@ -1366,6 +1378,9 @@ function generateOrderHtmlEmail(orderData) {
                     </td>
                 </tr>
             </table>
+
+            <!-- NEW: Date and Time Section -->
+            <p style="font-size: 14px; color: #000000; text-align: center; margin: 5px 0 10px 0;"><strong>Date:</strong> ${currentDateTime}</p>
 
             <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
