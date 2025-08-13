@@ -1264,11 +1264,7 @@ function generateOrderHtmlEmail(orderData) {
         return `
             <tr>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
-                <td style="border: 1px solid #ccc; padding: 8px; color: #000000; vertical-align: top;">
-                    <strong>${item.partNo}</strong><br>
-                    <small>${formattedDescription}</small>
-                    ${item.note ? `<div style="height: 7px;"></div><small>${item.note}</small>` : ''}
-                </td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: left; font-family: Arial, sans-serif; font-size: 14px; white-space: pre-wrap; word-wrap: break-word;">${item.partNo}<br>${item.description || ''}${item.note ? `<div style="height: 7px;"></div><small>${item.note.replace(/\n/g, '<br>')}</small>` : ''}</td>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
