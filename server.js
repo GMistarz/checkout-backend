@@ -1503,11 +1503,10 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
-                <div style="font-size: 10px; font-family: Arial, sans-serif; text-align: center; width: 100%; color: #555;">
+                <div style="width: 100%; font-size: 10px; font-family: Arial, sans-serif; color: #555; display: flex; justify-content: center;">
                     Page&nbsp;<span class="pageNumber"></span>&nbsp;of&nbsp;<span class="totalPages"></span>
                 </div>
-            `, // MODIFIED: Using inline styles and non-breaking spaces
-            headerTemplate: '<div style="display: none;"></div>', // Empty header
+            `,            headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
         return pdfBuffer;
