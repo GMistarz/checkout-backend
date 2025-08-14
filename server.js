@@ -177,11 +177,10 @@ const authorizeCompanyAccess = async (req, res, next) => {
     const userCompanyId = req.session.user.companyId;
     console.log(`[authorizeCompanyAccess] Non-admin user: ${req.session.user.email}, Session Company ID: ${userCompanyId}`);
 
-    let requestedCompanyId = null;
     let conn = null; // Initialize connection to null
-
     try {
-        conn = await mysql.createConnection(dbConnectionConfig); // Connect here, at the start of the try block
+        conn = await mysql.createConnection(dbConnectionConfig);
+        let requestedCompanyId = null;
 
         if (req.params.companyId) {
             requestedCompanyId = parseInt(req.params.companyId, 10);
@@ -200,21 +199,23 @@ const authorizeCompanyAccess = async (req, res, next) => {
                 return res.status(404).json({ error: "Resource not found." });
             }
         }
+
+        // Check if the user's company ID matches the requested company ID
+        if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
+            console.warn(`[authorizeCompanyAccess] Forbidden: Company ID mismatch. Session: ${userCompanyId}, Requested: ${requestedCompanyId}, Path: ${req.path}`);
+            return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+        }
+
+        console.log(`[authorizeCompanyAccess] Access granted for non-admin user. Path: ${req.path}`);
+        next(); // All checks passed, proceed to the route handler
+
     } catch (err) {
-        console.error("Error fetching company_id for authorization:", err);
+        // The catch block now properly covers the entire authorization logic
+        console.error("Error during company access authorization:", err);
         return res.status(500).json({ error: "Server error during authorization." });
     } finally {
-        if (conn) conn.end(); // Ensure connection is closed only if it was successfully created
+        if (conn) conn.end(); // Ensure connection is always closed
     }
-
-    // Check if the user's company ID matches the requested company ID
-    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
-        console.warn(`[authorizeCompanyAccess] Forbidden: Company ID mismatch. Session: ${userCompanyId}, Requested: ${requestedCompanyId}, Path: ${req.path}`);
-        return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
-    }
-
-    console.log(`[authorizeCompanyAccess] Access granted for non-admin user. Path: ${req.path}`);
-    next();
 };
 
 
@@ -458,6 +459,7 @@ app.post("/login", async (req, res) => {
 app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Route hit.");
   const { user } = req.session;
+
   console.log("[User Profile Route] Session user:", user);
 
 
