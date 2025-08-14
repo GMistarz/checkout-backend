@@ -2149,4 +2149,3 @@ initializeDatabase().then(() => {
     console.error("Failed to start server due to database initialization error:", err);
     process.exit(1);
 });
-" is still not working.  The error is still the
