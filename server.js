@@ -160,61 +160,86 @@ const requireAuth = (req, res, next) => {
     next();
 };
 
-// --- MODIFIED: Helper Middleware for Company Access Authorization ---
+// --- REFACTORED: Helper Middleware for Company Access Authorization ---
 const authorizeCompanyAccess = async (req, res, next) => {
     console.log(`[authorizeCompanyAccess] Entering middleware for path: ${req.path}`);
-    if (!req.session.user) {
-        console.warn(`[authorizeCompanyAccess] Unauthorized: No user in session.`);
-        return res.status(401).json({ error: "Unauthorized: Login required" });
-    }
-
-    // Allow admins to access any company's data
-    if (req.session.user.role === "admin") {
-        console.log(`[authorizeCompanyAccess] Admin access granted for: ${req.session.user.email}`);
-        return next();
-    }
-
-    const userCompanyId = req.session.user.companyId;
-    console.log(`[authorizeCompanyAccess] Non-admin user: ${req.session.user.email}, Session Company ID: ${userCompanyId}`);
-
-    let conn = null; // Initialize connection to null
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
-        let requestedCompanyId = null;
+        if (!req.session || !req.session.user) {
+            console.warn(`[authorizeCompanyAccess] Unauthorized: No user in session.`);
+            return res.status(401).json({ error: "Unauthorized: Login required" });
+        }
 
-        if (req.params.companyId) {
-            requestedCompanyId = parseInt(req.params.companyId, 10);
-            console.log(`[authorizeCompanyAccess] Requested Company ID from params: ${requestedCompanyId}`);
-        } else if (req.body.companyId) {
-            requestedCompanyId = parseInt(req.body.companyId, 10);
-            console.log(`[authorizeCompanyAccess] Requested Company ID from body: ${requestedCompanyId}`);
-        } else if (req.params.addressId) { // Handles PUT and DELETE for single address
-            const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
-            if (rows.length > 0) {
-                requestedCompanyId = rows[0].company_id;
-                console.log(`[authorizeCompanyAccess] Requested Company ID from addressId lookup: ${requestedCompanyId}`);
+        // Admins have universal access
+        if (req.session.user.role === "admin") {
+            console.log(`[authorizeCompanyAccess] Admin access granted for: ${req.session.user.email}`);
+            return next();
+        }
+
+        const userCompanyId = req.session.user.companyId;
+        if (!userCompanyId) {
+            console.error(`[authorizeCompanyAccess] Forbidden: User ${req.session.user.email} has no companyId.`);
+            return res.status(403).json({ error: "Forbidden: User is not associated with a company." });
+        }
+        console.log(`[authorizeCompanyAccess] Non-admin user: ${req.session.user.email}, Session Company ID: ${userCompanyId}`);
+
+        // Determine the company ID of the resource being requested
+        const requestedCompanyIdFromParams = req.params.companyId ? parseInt(req.params.companyId, 10) : null;
+        const requestedCompanyIdFromBody = req.body.companyId ? parseInt(req.body.companyId, 10) : null;
+
+        // Case 1: The route URL contains the companyId (e.g., /api/shipto/:companyId)
+        if (requestedCompanyIdFromParams) {
+            if (userCompanyId === requestedCompanyIdFromParams) {
+                console.log(`[authorizeCompanyAccess] Access granted based on URL parameter.`);
+                return next();
             } else {
-                console.warn(`[authorizeCompanyAccess] Address ID ${req.params.addressId} not found for company lookup.`);
-                // If the address isn't found, the user can't access it, so deny access.
-                return res.status(404).json({ error: "Resource not found." });
+                console.warn(`[authorizeCompanyAccess] Forbidden: URL companyId (${requestedCompanyIdFromParams}) does not match user's companyId (${userCompanyId}).`);
+                return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
             }
         }
 
-        // Check if the user's company ID matches the requested company ID
-        if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
-            console.warn(`[authorizeCompanyAccess] Forbidden: Company ID mismatch. Session: ${userCompanyId}, Requested: ${requestedCompanyId}, Path: ${req.path}`);
-            return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+        // Case 2: The request body contains the companyId (e.g., POST /api/shipto)
+        if (requestedCompanyIdFromBody) {
+            if (userCompanyId === requestedCompanyIdFromBody) {
+                console.log(`[authorizeCompanyAccess] Access granted based on request body.`);
+                return next();
+            } else {
+                console.warn(`[authorizeCompanyAccess] Forbidden: Body companyId (${requestedCompanyIdFromBody}) does not match user's companyId (${userCompanyId}).`);
+                return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
+            }
         }
 
-        console.log(`[authorizeCompanyAccess] Access granted for non-admin user. Path: ${req.path}`);
-        next(); // All checks passed, proceed to the route handler
+        // Case 3: The route identifies the resource by a different ID (e.g., /api/shipto/:addressId)
+        // We need to look up the resource's companyId from the database.
+        if (req.params.addressId) {
+            let conn = null;
+            try {
+                conn = await mysql.createConnection(dbConnectionConfig);
+                const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
+                if (rows.length > 0) {
+                    const resourceCompanyId = rows[0].company_id;
+                    if (userCompanyId === resourceCompanyId) {
+                        console.log(`[authorizeCompanyAccess] Access granted based on addressId lookup.`);
+                        return next();
+                    } else {
+                        console.warn(`[authorizeCompanyAccess] Forbidden: Address resource companyId (${resourceCompanyId}) does not match user's companyId (${userCompanyId}).`);
+                        return res.status(403).json({ error: "Forbidden: You do not have permission to access this resource." });
+                    }
+                } else {
+                    console.warn(`[authorizeCompanyAccess] Resource not found for addressId: ${req.params.addressId}`);
+                    return res.status(404).json({ error: "Resource not found." });
+                }
+            } finally {
+                if (conn) conn.end();
+            }
+        }
+
+        // If none of the above conditions are met, we don't know how to authorize. Deny access.
+        console.warn(`[authorizeCompanyAccess] Could not determine resource ownership for path: ${req.path}`);
+        return res.status(403).json({ error: "Forbidden: Unable to verify resource ownership." });
 
     } catch (err) {
-        // The catch block now properly covers the entire authorization logic
         console.error("Error during company access authorization:", err);
         return res.status(500).json({ error: "Server error during authorization." });
-    } finally {
-        if (conn) conn.end(); // Ensure connection is always closed
     }
 };
 
@@ -459,7 +484,6 @@ app.post("/login", async (req, res) => {
 app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Route hit.");
   const { user } = req.session;
-
   console.log("[User Profile Route] Session user:", user);
 
 
@@ -2125,3 +2149,4 @@ initializeDatabase().then(() => {
     console.error("Failed to start server due to database initialization error:", err);
     process.exit(1);
 });
+" is still not working.  The error is still the
