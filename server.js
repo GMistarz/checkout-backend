@@ -179,7 +179,10 @@ const authorizeCompanyAccess = async (req, res, next) => {
 
     let requestedCompanyId = null;
     let conn = null; // Initialize connection to null
+
     try {
+        conn = await mysql.createConnection(dbConnectionConfig); // Connect here, at the start of the try block
+
         if (req.params.companyId) {
             requestedCompanyId = parseInt(req.params.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from params: ${requestedCompanyId}`);
@@ -187,7 +190,6 @@ const authorizeCompanyAccess = async (req, res, next) => {
             requestedCompanyId = parseInt(req.body.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from body: ${requestedCompanyId}`);
         } else if (req.params.addressId) { // Handles PUT and DELETE for single address
-            conn = await mysql.createConnection(dbConnectionConfig);
             const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
             if (rows.length > 0) {
                 requestedCompanyId = rows[0].company_id;
@@ -1263,7 +1265,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
     // Determine if carrierAccount is present and not just whitespace
     const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
-    
+
     let itemsHtml = orderData.items.map(item => {
         // Apply the same formatting for "**" as in the frontend (only first instance)
         let formattedDescription = item.description ? item.description.replace('**', '<br>**') : '';
@@ -1278,13 +1280,13 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     }).join('');
 
     // Debug log for shippingAccountType
-    console.log("generateOrderHtmlEmail: Checking shippingAccountType:", orderData.shippingAccountType); 
+    console.log("generateOrderHtmlEmail: Checking shippingAccountType:", orderData.shippingAccountType);
     console.log("generateOrderHtmlEmail: Checking thirdPartyDetails:", JSON.stringify(orderData.thirdPartyDetails, null, 2));
 
     // Conditional country display logic
     const thirdParty = orderData.thirdPartyDetails;
     let thirdPartyCountryHtml = '';
-    if (thirdParty && thirdParty.third_party_country && 
+    if (thirdParty && thirdParty.third_party_country &&
         !["USA", "United States", "United States of America"].includes(thirdParty.third_party_country.trim())) {
         thirdPartyCountryHtml = `<p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_country}</p>`;
     }
@@ -1337,7 +1339,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     // Adjusted max-height for better fit, added absolute positioning and z-index
     // Positioned relative to the main container, aligned with the right edge of the table.
     // Top position is adjusted to be between the Ship To box and Order Summary.
-    const carrierLogoStyle = 'max-height: 50px; width: auto; display: block; position: absolute; top: 325px; right: 20px; z-index: 100;'; 
+    const carrierLogoStyle = 'max-height: 50px; width: auto; display: block; position: absolute; top: 325px; right: 20px; z-index: 100;';
 
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
@@ -1572,9 +1574,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         // Insert into orders table, matching the provided schema exactly
         // MODIFIED: Added orderedByName and shippingAddressId to the INSERT statement
         const [orderResult] = await conn.execute(
-            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingMethod, carrierAccount, items, date, orderedByEmail, orderedByPhone, attn, tag, thirdPartyDetails, companyId, shippingAddressId, orderedByName)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)`, // Added new columns
-            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingMethod, finalCarrierAccountForDb, JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, attn, tag, JSON.stringify(thirdPartyDetails), companyId, shippingAddressId, orderedBy] // Store calculated items and finalCarrierAccountForDb, shippingAddressId, and orderedBy
+            `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, carrierAccount, thirdPartyDetails, items, date, orderedByEmail, orderedByPhone, orderedByName, companyId)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`, // Added new columns
+            [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, finalCarrierAccountForDb, JSON.stringify(thirdPartyDetails), JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, orderedBy, companyId] // Store calculated items and finalCarrierAccountForDb, shippingAddressId, and orderedBy
         );
         const orderId = orderResult.insertId;
         console.log(`[submit-order] Order ID ${orderId} inserted into database for company ID ${companyId}.`);
@@ -1651,6 +1653,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: "Thank You For Placing Your Order With Chicago Stainless Equipment",
             html: `
+
                 <p>Dear ${req.session.user.firstName},</p>
                 <p>Thank you for your recent order with Chicago Stainless Equipment, Inc.</p>
                 <p>This email confirms that your order has been successfully placed.</p>
@@ -1707,29 +1710,29 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         let query = `
-            SELECT 
-                o.id, 
-                o.poNumber, 
-                o.shippingMethod, 
-                o.items, 
-                o.date, 
-                o.orderedByEmail, 
-                o.orderedByPhone, 
-                o.billingAddress, 
-                o.attn, 
-                o.tag, 
-                o.carrierAccount, 
-                o.thirdPartyDetails, 
-                o.shippingAddressId, 
-                o.orderedByName, 
-                s.name AS shipToAddressName, 
-                s.address1 AS shipToAddress1, 
-                s.city AS shipToAddressCity, 
-                s.state AS shipToAddressState, 
-                s.zip AS shipToAddressZip, 
-                s.country AS shipToAddressCountry 
-            FROM orders o 
-            LEFT JOIN shipto_addresses s ON o.shippingAddressId = s.id 
+            SELECT
+                o.id,
+                o.poNumber,
+                o.shippingMethod,
+                o.items,
+                o.date,
+                o.orderedByEmail,
+                o.orderedByPhone,
+                o.billingAddress,
+                o.attn,
+                o.tag,
+                o.carrierAccount,
+                o.thirdPartyDetails,
+                o.shippingAddressId,
+                o.orderedByName,
+                s.name AS shipToAddressName,
+                s.address1 AS shipToAddress1,
+                s.city AS shipToAddressCity,
+                s.state AS shipToAddressState,
+                s.zip AS shipToAddressZip,
+                s.country AS shipToAddressCountry
+            FROM orders o
+            LEFT JOIN shipto_addresses s ON o.shippingAddressId = s.id
             WHERE o.companyId = ?
         `;
         const params = [companyId];
@@ -1833,7 +1836,7 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 if (!Array.isArray(order.items)) {
                     return false; // Skip orders with malformed items data
                 }
-                return order.items.some(item => 
+                return order.items.some(item =>
                     item.partNo && item.partNo.toLowerCase().includes(searchTermLower)
                 );
             });
@@ -1955,25 +1958,26 @@ async function initializeDatabase() {
                 poNumber VARCHAR(255) NOT NULL,
                 billingAddress TEXT NOT NULL,
                 shippingAddress TEXT NOT NULL,
+                shippingAddressId INT,
+                attn VARCHAR(255),
+                tag VARCHAR(255),
                 shippingMethod VARCHAR(255),
+                shippingAccountType VARCHAR(255),
                 carrierAccount VARCHAR(255),
+                thirdPartyDetails JSON,
                 items JSON NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 orderedByEmail VARCHAR(255),
                 orderedByPhone VARCHAR(50),
-                orderedByName VARCHAR(255), -- NEW: Added orderedByName column
-                attn VARCHAR(255),
-                tag VARCHAR(255),
-                thirdPartyDetails JSON,
+                orderedByName VARCHAR(255),
                 companyId INT,
-                shippingAddressId INT, -- NEW: Added shippingAddressId column
                 FOREIGN KEY (companyId) REFERENCES companies(id) ON DELETE CASCADE,
-                FOREIGN KEY (shippingAddressId) REFERENCES shipto_addresses(id) ON DELETE SET NULL -- New FK
+                FOREIGN KEY (shippingAddressId) REFERENCES shipto_addresses(id) ON DELETE SET NULL
             ) ENGINE=InnoDB;
         `);
         console.log("'orders' table checked/created.");
 
-        // NEW: Check if 'companyId' column exists in 'orders' table before adding it
+        // Check if 'companyId' column exists in 'orders' table before adding it
         const [ordersCompanyIdColumnCheck] = await conn.execute(`
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -1992,7 +1996,7 @@ async function initializeDatabase() {
             console.log("'companyId' column already exists in 'orders' table.");
         }
 
-        // NEW: Check if 'shippingAddressId' column exists in 'orders' table before adding it
+        // Check if 'shippingAddressId' column exists in 'orders' table before adding it
         const [ordersShippingAddressIdColumnCheck] = await conn.execute(`
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -2016,7 +2020,7 @@ async function initializeDatabase() {
         const [ordersNewColumnsCheck] = await conn.execute(`
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails', 'orderedByName');
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'orders' AND COLUMN_NAME IN ('orderedByEmail', 'orderedByPhone', 'attn', 'tag', 'thirdPartyDetails', 'orderedByName', 'shippingAccountType');
         `, [dbConnectionConfig.database]);
 
         const existingOrderColumns = ordersNewColumnsCheck.map(row => row.COLUMN_NAME);
@@ -2044,6 +2048,10 @@ async function initializeDatabase() {
         if (!existingOrderColumns.includes('orderedByName')) {
             await conn.execute(`ALTER TABLE orders ADD COLUMN orderedByName VARCHAR(255);`);
             console.log("'orderedByName' column added to 'orders' table.");
+        }
+        if (!existingOrderColumns.includes('shippingAccountType')) {
+            await conn.execute(`ALTER TABLE orders ADD COLUMN shippingAccountType VARCHAR(255);`);
+            console.log("'shippingAccountType' column added to 'orders' table.");
         }
 
 
