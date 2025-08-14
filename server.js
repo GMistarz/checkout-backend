@@ -1503,10 +1503,20 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
-                <div style="font-family: Arial, sans-serif; font-size: 10px; text-align: center; width: 100%; padding-top: 10px; color: #555;">
+                <style>
+                    #footer {
+                        padding: 10px !important;
+                        font-size: 10px !important;
+                        font-family: Arial, sans-serif !important;
+                        text-align: center !important;
+                        width: 100%;
+                        color: #555;
+                    }
+                </style>
+                <div id="footer">
                     Page <span class="pageNumber"></span> of <span class="totalPages"></span>
                 </div>
-            `, // MODIFIED: Added font-family to help with rendering in headless environments
+            `, // MODIFIED: Using a more robust template with a style tag
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
@@ -2149,4 +2159,3 @@ initializeDatabase().then(() => {
 }).catch(err => {
     console.error("Failed to start server due to database initialization error:", err);
     process.exit(1);
-});
