@@ -178,9 +178,8 @@ const authorizeCompanyAccess = async (req, res, next) => {
     console.log(`[authorizeCompanyAccess] Non-admin user: ${req.session.user.email}, Session Company ID: ${userCompanyId}`);
 
     let requestedCompanyId = null;
-    let conn;
+    let conn = null; // Initialize connection to null
     try {
-        conn = await mysql.createConnection(dbConnectionConfig);
         if (req.params.companyId) {
             requestedCompanyId = parseInt(req.params.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from params: ${requestedCompanyId}`);
@@ -188,6 +187,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
             requestedCompanyId = parseInt(req.body.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from body: ${requestedCompanyId}`);
         } else if (req.params.addressId) { // Handles PUT and DELETE for single address
+            conn = await mysql.createConnection(dbConnectionConfig);
             const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
             if (rows.length > 0) {
                 requestedCompanyId = rows[0].company_id;
@@ -202,7 +202,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
         console.error("Error fetching company_id for authorization:", err);
         return res.status(500).json({ error: "Server error during authorization." });
     } finally {
-        if (conn) conn.end();
+        if (conn) conn.end(); // Ensure connection is closed only if it was successfully created
     }
 
     // Check if the user's company ID matches the requested company ID
@@ -643,7 +643,6 @@ app.post("/register-company", async (req, res) => {
     return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
   }
   let conn;
-
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
