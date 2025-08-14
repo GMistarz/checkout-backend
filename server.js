@@ -160,7 +160,7 @@ const requireAuth = (req, res, next) => {
     next();
 };
 
-// --- NEW: Helper Middleware for Company Access Authorization (MODIFIED) ---
+// --- MODIFIED: Helper Middleware for Company Access Authorization ---
 const authorizeCompanyAccess = async (req, res, next) => {
     console.log(`[authorizeCompanyAccess] Entering middleware for path: ${req.path}`);
     if (!req.session.user) {
