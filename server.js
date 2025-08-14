@@ -160,7 +160,7 @@ const requireAuth = (req, res, next) => {
     next();
 };
 
-// --- NEW: Helper Middleware for Company Access Authorization ---
+// --- NEW: Helper Middleware for Company Access Authorization (MODIFIED) ---
 const authorizeCompanyAccess = async (req, res, next) => {
     console.log(`[authorizeCompanyAccess] Entering middleware for path: ${req.path}`);
     if (!req.session.user) {
@@ -177,16 +177,14 @@ const authorizeCompanyAccess = async (req, res, next) => {
     const userCompanyId = req.session.user.companyId;
     console.log(`[authorizeCompanyAccess] Non-admin user: ${req.session.user.email}, Session Company ID: ${userCompanyId}`);
 
-
-    // Determine the companyId from the request based on route
     let requestedCompanyId = null;
-    if (req.params.companyId) { // For routes like /api/shipto/:companyId or /api/orders/:companyId
+    if (req.params.companyId) {
         requestedCompanyId = parseInt(req.params.companyId, 10);
         console.log(`[authorizeCompanyAccess] Requested Company ID from params: ${requestedCompanyId}`);
-    } else if (req.body.companyId) { // For POST routes like /api/shipto (add new)
+    } else if (req.body.companyId) {
         requestedCompanyId = parseInt(req.body.companyId, 10);
         console.log(`[authorizeCompanyAccess] Requested Company ID from body: ${requestedCompanyId}`);
-    } else if (req.params.addressId) { // For PUT/DELETE/SET_DEFAULT/UPDATE_CARRIER_ACCOUNT on /api/shipto/:addressId
+    } else if (req.params.addressId) { // Handles PUT and DELETE for single address
         let conn;
         try {
             conn = await mysql.createConnection(dbConnectionConfig);
@@ -196,6 +194,8 @@ const authorizeCompanyAccess = async (req, res, next) => {
                 console.log(`[authorizeCompanyAccess] Requested Company ID from addressId lookup: ${requestedCompanyId}`);
             } else {
                 console.warn(`[authorizeCompanyAccess] Address ID ${req.params.addressId} not found for company lookup.`);
+                // If the address isn't found, the user can't access it, so deny access.
+                return res.status(404).json({ error: "Resource not found." });
             }
         } catch (err) {
             console.error("Error fetching company_id for authorization:", err);
@@ -205,23 +205,12 @@ const authorizeCompanyAccess = async (req, res, next) => {
         }
     }
 
-    // For the submit-order route, we assume the user's companyId is implicitly linked to the order.
-    // We don't need a requestedCompanyId from params/body for this specific route's authorization,
-    // but we ensure the user is authenticated and has a companyId.
-    if (req.path === '/submit-order' && !userCompanyId) {
-        console.warn(`[authorizeCompanyAccess] Forbidden: User not associated with a company for submit-order.`);
-        return res.status(403).json({ error: "Forbidden: User not associated with a company." });
+    // Check if the user's company ID matches the requested company ID
+    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
+        console.warn(`[authorizeCompanyAccess] Forbidden: Company ID mismatch. Session: ${userCompanyId}, Requested: ${requestedCompanyId}, Path: ${req.path}`);
+        return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
     }
 
-    if (requestedCompanyId === null || userCompanyId !== requestedCompanyId) {
-        // Only apply this check if a specific companyId was requested in the URL/body
-        // and it doesn't match the user's companyId, or if no companyId was found
-        // but the route requires it (e.g., shipto management).
-        if (req.path.startsWith('/api/shipto/') || req.path === '/api/shipto' || req.path.startsWith('/api/orders/')) {
-            console.warn(`[authorizeCompanyAccess] Forbidden: Company ID mismatch. Session: ${userCompanyId}, Requested: ${requestedCompanyId}, Path: ${req.path}`);
-            return res.status(403).json({ error: "Forbidden: You can only access data for your own company." });
-        }
-    }
     console.log(`[authorizeCompanyAccess] Access granted for non-admin user. Path: ${req.path}`);
     next();
 };
@@ -1113,6 +1102,7 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
     }
 });
 
+// The delete endpoint for shipto addresses
 app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => {
     const { addressId } = req.params;
     console.log(`[DELETE /api/shipto/:addressId] Deleting address ID: ${addressId}`);
@@ -1122,6 +1112,9 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
         await conn.execute("DELETE FROM shipto_addresses WHERE id = ?", [addressId]);
         console.log(`[DELETE /api/shipto/:addressId] Address ID ${addressId} deleted successfully.`);
         res.json({ message: "Address deleted successfully" });
+    } catch (err) {
+        console.error(`[DELETE /api/shipto/:addressId] Error deleting address ID ${addressId}:`, err);
+        res.status(500).json({ error: "Failed to delete address due to a server error." });
     } finally {
         if (conn) conn.end();
     }
