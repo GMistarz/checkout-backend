@@ -460,6 +460,7 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   console.log("[User Profile Route] Route hit.");
   const { user } = req.session;
 
+
   console.log("[User Profile Route] Session user:", user);
 
 
@@ -1106,13 +1107,35 @@ app.put("/api/shipto/:addressId/set-default", authorizeCompanyAccess, async (req
     }
 });
 
-// The delete endpoint for shipto addresses
-app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => {
+// MODIFIED: The delete endpoint for shipto addresses
+app.delete("/api/shipto/:addressId", requireAuth, async (req, res) => { // Use requireAuth for basic login check
     const { addressId } = req.params;
     console.log(`[DELETE /api/shipto/:addressId] Deleting address ID: ${addressId}`);
+
+    // Get user details from session
+    const userRole = req.session.user.role;
+    const userCompanyId = req.session.user.companyId;
+
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
+
+        // For non-admins, verify they own the address before deleting
+        if (userRole !== 'admin') {
+            const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [addressId]);
+            if (rows.length === 0) {
+                return res.status(404).json({ error: "Address not found." });
+            }
+            const addressCompanyId = rows[0].company_id;
+
+            // Check if the address's company matches the user's company
+            if (addressCompanyId !== userCompanyId) {
+                console.warn(`[DELETE /api/shipto/:addressId] Forbidden: User company ${userCompanyId} does not match address company ${addressCompanyId}.`);
+                return res.status(403).json({ error: "Forbidden: You do not have permission to delete this address." });
+            }
+        }
+
+        // If the user is an admin, or if the non-admin passed the check, proceed with deletion
         await conn.execute("DELETE FROM shipto_addresses WHERE id = ?", [addressId]);
         console.log(`[DELETE /api/shipto/:addressId] Address ID ${addressId} deleted successfully.`);
         res.json({ message: "Address deleted successfully" });
@@ -1123,6 +1146,7 @@ app.delete("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) =>
         if (conn) conn.end();
     }
 });
+
 
 // NEW: Admin Settings Routes
 app.get("/admin/settings", requireAdmin, async (req, res) => {
