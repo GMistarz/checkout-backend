@@ -461,6 +461,7 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   const { user } = req.session;
 
 
+
   console.log("[User Profile Route] Session user:", user);
 
 
@@ -1502,10 +1503,10 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
             footerTemplate: `
-                <div style="font-size: 10px; text-align: center; width: 100%; padding-top: 10px; color: #555;">
+                <div style="font-family: Arial, sans-serif; font-size: 10px; text-align: center; width: 100%; padding-top: 10px; color: #555;">
                     Page <span class="pageNumber"></span> of <span class="totalPages"></span>
                 </div>
-            `, // Simplified footer template
+            `, // MODIFIED: Added font-family to help with rendering in headless environments
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
