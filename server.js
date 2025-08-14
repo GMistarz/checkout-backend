@@ -180,6 +180,7 @@ const authorizeCompanyAccess = async (req, res, next) => {
     let requestedCompanyId = null;
     let conn;
     try {
+        conn = await mysql.createConnection(dbConnectionConfig);
         if (req.params.companyId) {
             requestedCompanyId = parseInt(req.params.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from params: ${requestedCompanyId}`);
@@ -187,7 +188,6 @@ const authorizeCompanyAccess = async (req, res, next) => {
             requestedCompanyId = parseInt(req.body.companyId, 10);
             console.log(`[authorizeCompanyAccess] Requested Company ID from body: ${requestedCompanyId}`);
         } else if (req.params.addressId) { // Handles PUT and DELETE for single address
-            conn = await mysql.createConnection(dbConnectionConfig);
             const [rows] = await conn.execute("SELECT company_id FROM shipto_addresses WHERE id = ?", [req.params.addressId]);
             if (rows.length > 0) {
                 requestedCompanyId = rows[0].company_id;
@@ -643,6 +643,7 @@ app.post("/register-company", async (req, res) => {
     return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
   }
   let conn;
+
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
@@ -1250,7 +1251,6 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
      // NEW: Format the current date and time
      const currentDate = new Date().toLocaleString('en-US', {
         year: 'numeric',
-
         month: 'short',
         day: 'numeric',
         timeZone: 'America/New_York'
