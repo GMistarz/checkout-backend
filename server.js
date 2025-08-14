@@ -1218,7 +1218,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             html: `
                 <p>Dear ${userName},</p>
                 <p>We are pleased to inform you that your company registration for <strong>${company.name}</strong> has been officially approved!</p>
-                <p>You can now log in to your account and start placing orders.</p>
+                <p>You can now log in and place orders.</p>
                 <p>Login Page: <a href="${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}">${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}</a></p>
                 <p>If you have any questions, please do not hesitate to contact us.</p>
                 <p>Thank you for choosing Chicago Stainless Equipment, Inc.</p>
@@ -1250,6 +1250,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
      // NEW: Format the current date and time
      const currentDate = new Date().toLocaleString('en-US', {
         year: 'numeric',
+
         month: 'short',
         day: 'numeric',
         timeZone: 'America/New_York'
