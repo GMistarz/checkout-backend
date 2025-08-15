@@ -1287,7 +1287,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
-        timeZone: 'short'
+        timeZone: 'America/New_York'
     });
 
     // Determine if carrierAccount is present and not just whitespace
@@ -1497,10 +1497,10 @@ async function generatePdfFromHtml(htmlContent) {
             format: 'Letter',
             printBackground: true,
             margin: {
-                top: '0.2in',
-                right: '0.3in',
-                bottom: '0.3in',
-                left: '0.3in'
+                top: '0.5in',
+                right: '0.5in',
+                bottom: '0.5in',
+                left: '0.5in'
             }
         });
         console.log(`Initial PDF generated. Buffer size: ${pdfBuffer.length} bytes.`);
@@ -1520,7 +1520,7 @@ async function generatePdfFromHtml(htmlContent) {
 
             currentPage.drawText(text, {
                 x: width / 2 - textWidth / 2, // Center horizontally
-                y: 15,                         // 15 points from the bottom
+                y: 30,                         // 30 points from the bottom
                 size: textSize,
                 font: helveticaFont,
                 color: rgb(0.33, 0.33, 0.33), // A dark gray color
