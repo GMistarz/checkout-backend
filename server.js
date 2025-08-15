@@ -1503,7 +1503,15 @@ async function generatePdfFromHtml(htmlContent) {
             },
             displayHeaderFooter: true, // Enable header/footer
 
-footerTemplate: '<div style="font-size:10px; width:100%; text-align:center;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+footerTemplate: `
+    <table style="width: 100%; font-size: 10px; font-family: sans-serif; color: #555;">
+        <tr>
+            <td style="text-align: center;">
+                Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+            </td>
+        </tr>
+    </table>
+`,
             
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
