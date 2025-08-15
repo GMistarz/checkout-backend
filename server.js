@@ -1492,6 +1492,8 @@ async function generatePdfFromHtml(htmlContent) {
             waitUntil: 'networkidle0'
         });
 
+        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+
         const pdfBuffer = await page.pdf({
             format: 'Letter',
             printBackground: true,
