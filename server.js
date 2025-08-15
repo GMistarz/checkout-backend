@@ -1287,7 +1287,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
-        timeZone: 'America/New_York'
+        timeZone: 'short'
     });
 
     // Determine if carrierAccount is present and not just whitespace
