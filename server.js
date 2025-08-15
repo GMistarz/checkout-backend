@@ -1499,7 +1499,7 @@ async function generatePdfFromHtml(htmlContent) {
             margin: {
                 top: '0.5in',
                 right: '0.5in',
-                bottom: '0.5in',
+                bottom: '0.25in',
                 left: '0.5in'
             }
         });
