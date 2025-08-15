@@ -1499,7 +1499,7 @@ async function generatePdfFromHtml(htmlContent) {
             margin: {
                 top: '0.5in',
                 right: '0.5in',
-                bottom: '0.25in',
+                bottom: '0.5in',
                 left: '0.5in'
             }
         });
@@ -1520,7 +1520,7 @@ async function generatePdfFromHtml(htmlContent) {
 
             currentPage.drawText(text, {
                 x: width / 2 - textWidth / 2, // Center horizontally
-                y: 30,                         // 30 points from the bottom
+                y: 20,                         // 20 points from the bottom
                 size: textSize,
                 font: helveticaFont,
                 color: rgb(0.33, 0.33, 0.33), // A dark gray color
