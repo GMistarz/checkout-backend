@@ -1283,12 +1283,23 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         day: 'numeric',
         timeZone: 'America/New_York'
     });
-    const currentTime = new Date().toLocaleString('en-US', {
+    // Use a single date object for consistency
+    const now = new Date();
+
+    // Get the time string separately
+    const timeString = now.toLocaleString('en-US', {
         hour: '2-digit',
         minute: '2-digit',
         hour12: true,
         timeZone: 'America/New_York'
     });
+
+    // Manually determine and append the timezone abbreviation
+    // DST in the US is roughly from March to November.
+    const month = now.getMonth(); // 0 = Jan, 11 = Dec
+    const timezoneAbbr = (month > 1 && month < 10) ? 'EDT' : 'EST'; 
+
+    const currentTime = `${timeString} ${timezoneAbbr}`;
 
     // Determine if carrierAccount is present and not just whitespace
     const hasCarrierAccount = orderData.carrierAccount && orderData.carrierAccount.trim() !== '';
@@ -1497,10 +1508,10 @@ async function generatePdfFromHtml(htmlContent) {
             format: 'Letter',
             printBackground: true,
             margin: {
-                top: '0.5in',
-                right: '0.5in',
-                bottom: '0.5in',
-                left: '0.5in'
+                top: '0.2in',
+                right: '0.3in',
+                bottom: '0.3in',
+                left: '0.3in'
             }
         });
         console.log(`Initial PDF generated. Buffer size: ${pdfBuffer.length} bytes.`);
@@ -1520,7 +1531,7 @@ async function generatePdfFromHtml(htmlContent) {
 
             currentPage.drawText(text, {
                 x: width / 2 - textWidth / 2, // Center horizontally
-                y: 30,                         // 30 points from the bottom
+                y: 15,                        // 15 points from the bottom
                 size: textSize,
                 font: helveticaFont,
                 color: rgb(0.33, 0.33, 0.33), // A dark gray color
