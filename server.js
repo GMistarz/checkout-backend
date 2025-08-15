@@ -1489,35 +1489,7 @@ async function generatePdfFromHtml(htmlContent) {
         });
         const page = await browser.newPage();
 
-        const fullHtml = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    @page {
-                        size: letter;
-                        margin: 0.5in;
-                        @bottom-center {
-                            content: "Page " counter(page) " of " counter(pages);
-                            font-size: 10px;
-                            font-family: Arial, sans-serif;
-                            color: #555;
-                        }
-                    }
-                    body {
-                        margin: 0;
-                        padding: 0;
-                        font-family: Arial, sans-serif;
-                    }
-                </style>
-            </head>
-            <body>
-                ${htmlContent}
-            </body>
-            </html>
-        `;
-
-        await page.setContent(fullHtml, {
+        await page.setContent(htmlContent, {
             waitUntil: 'networkidle0'
         });
 
@@ -1525,11 +1497,14 @@ async function generatePdfFromHtml(htmlContent) {
             format: 'Letter',
             printBackground: true,
             margin: {
-                top: 0,
-                right: 0,
-                bottom: 0,
-                left: 0
-            }
+                top: '0.5in',
+                right: '0.5in',
+                bottom: '0.5in',
+                left: '0.5in'
+            },
+            displayHeaderFooter: true,
+            headerTemplate: '<div style="display: none;"></div>',
+            footerTemplate: '<div style="width: 100%; text-align: center; font-size: 10px; font-family: Arial, sans-serif; color: #555;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>'
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
         return pdfBuffer;
@@ -1550,7 +1525,6 @@ async function generatePdfFromHtml(htmlContent) {
             }
         }
     }
-
 
 app.post("/submit-order", requireAuth, async (req, res) => {
     // Destructure new fields: orderedByEmail, orderedByPhone, shippingAccountType, thirdPartyDetails
