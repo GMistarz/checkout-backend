@@ -462,7 +462,6 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   const { user } = req.session;
 
 
-
   console.log("[User Profile Route] Session user:", user);
 
 
@@ -1530,7 +1529,7 @@ async function generatePdfFromHtml(htmlContent) {
 
         const finalPdfBytes = await pdfDoc.save();
         console.log(`Final PDF with page numbers created. Buffer size: ${finalPdfBytes.length} bytes.`);
-
+        
         // Return the modified PDF as a Buffer
         return Buffer.from(finalPdfBytes);
 
@@ -1551,6 +1550,7 @@ async function generatePdfFromHtml(htmlContent) {
         }
     }
 }
+
 
 app.post("/submit-order", requireAuth, async (req, res) => {
     // Destructure new fields: orderedByEmail, orderedByPhone, shippingAccountType, thirdPartyDetails
