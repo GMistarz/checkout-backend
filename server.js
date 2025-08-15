@@ -9,6 +9,7 @@ const nodemailer = require("nodemailer");
 const os = require('os'); // NEW: Import os module
 const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp directory names
 const fs = require('fs/promises'); // NEW: For async file system operations
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
 // NEW: Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
@@ -1470,7 +1471,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     `;
 }
 
-// NEW: Function to generate PDF from HTML content
+// NEW: Function to generate PDF from HTML content and add page numbers manually
 async function generatePdfFromHtml(htmlContent) {
     let browser;
     let userDataDir;
@@ -1492,8 +1493,7 @@ async function generatePdfFromHtml(htmlContent) {
             waitUntil: 'networkidle0'
         });
 
-        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
-
+        // Generate the PDF *without* the faulty footer template
         const pdfBuffer = await page.pdf({
             format: 'Letter',
             printBackground: true,
@@ -1502,37 +1502,55 @@ async function generatePdfFromHtml(htmlContent) {
                 right: '0.5in',
                 bottom: '0.5in',
                 left: '0.5in'
-            },
-            displayHeaderFooter: true, // Enable header/footer
-
-footerTemplate: `
-    <div style="width: 100%; font-size: 10px !important; font-family: sans-serif !important; color: #555 !important; text-align: center !important;">
-        Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-    </div>
-`,
-
-            headerTemplate: '<div style="display: none;"></div>', // Empty header
+            }
         });
-        console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
-        return pdfBuffer;
+        console.log(`Initial PDF generated. Buffer size: ${pdfBuffer.length} bytes.`);
+
+        // === Manually add page numbers using pdf-lib ===
+        const pdfDoc = await PDFDocument.load(pdfBuffer);
+        const totalPages = pdfDoc.getPageCount();
+        const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const pages = pdfDoc.getPages();
+
+        for (let i = 0; i < totalPages; i++) {
+            const currentPage = pages[i];
+            const { width, height } = currentPage.getSize();
+            const text = `Page ${i + 1} of ${totalPages}`;
+            const textSize = 10;
+            const textWidth = helveticaFont.widthOfTextAtSize(text, textSize);
+
+            currentPage.drawText(text, {
+                x: width / 2 - textWidth / 2, // Center horizontally
+                y: 30,                         // 30 points from the bottom
+                size: textSize,
+                font: helveticaFont,
+                color: rgb(0.33, 0.33, 0.33), // A dark gray color
+            });
+        }
+
+        const finalPdfBytes = await pdfDoc.save();
+        console.log(`Final PDF with page numbers created. Buffer size: ${finalPdfBytes.length} bytes.`);
+
+        // Return the modified PDF as a Buffer
+        return Buffer.from(finalPdfBytes);
+
     } catch (error) {
         console.error("Error generating PDF:", error);
         throw new Error("Failed to generate PDF for order confirmation.");
     } finally {
-            if (browser) {
-                await browser.close();
-            }
-            if (userDataDir) {
-                try {
-                    await fs.rm(userDataDir, { recursive: true, force: true });
-                    console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
-                } catch (cleanupError) {
-                    console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
-                }
+        if (browser) {
+            await browser.close();
+        }
+        if (userDataDir) {
+            try {
+                await fs.rm(userDataDir, { recursive: true, force: true });
+                console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
+            } catch (cleanupError) {
+                console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
             }
         }
     }
-
+}
 
 app.post("/submit-order", requireAuth, async (req, res) => {
     // Destructure new fields: orderedByEmail, orderedByPhone, shippingAccountType, thirdPartyDetails
