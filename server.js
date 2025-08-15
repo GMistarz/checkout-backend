@@ -1502,12 +1502,9 @@ async function generatePdfFromHtml(htmlContent) {
                 left: '0.5in'
             },
             displayHeaderFooter: true, // Enable header/footer
-footerTemplate: `
-    <div style="width: 100%; font-family: sans-serif; text-align: center; font-size: 10px; color: #555;">
-        Page&nbsp;<span class="pageNumber"></span>&nbsp;of&nbsp;<span class="totalPages"></span>
-    </div>
-`,
 
+footerTemplate: '<div style="font-size:10px; width:100%; text-align:center;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
+            
             headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
