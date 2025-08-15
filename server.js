@@ -1497,9 +1497,9 @@ async function generatePdfFromHtml(htmlContent) {
             format: 'Letter',
             printBackground: true,
             margin: {
-                top: '0.5in',
+                top: '0.2in',
                 right: '0.5in',
-                bottom: '0.5in',
+                bottom: '0.3in',
                 left: '0.5in'
             }
         });
