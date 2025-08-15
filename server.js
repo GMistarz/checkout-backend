@@ -1498,9 +1498,9 @@ async function generatePdfFromHtml(htmlContent) {
             printBackground: true,
             margin: {
                 top: '0.2in',
-                right: '0.5in',
+                right: '0.3in',
                 bottom: '0.3in',
-                left: '0.5in'
+                left: '0.3in'
             }
         });
         console.log(`Initial PDF generated. Buffer size: ${pdfBuffer.length} bytes.`);
