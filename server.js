@@ -462,7 +462,6 @@ app.get("/user-profile", requireAuth, async (req, res) => {
 
 
 
-
   console.log("[User Profile Route] Session user:", user);
 
 
@@ -1502,9 +1501,14 @@ async function generatePdfFromHtml(htmlContent) {
                 bottom: '0.5in',
                 left: '0.5in'
             },
-            displayHeaderFooter: true,
-            headerTemplate: '<div style="display: none;"></div>',
-            footerTemplate: '<div style="width: 100%; text-align: center; font-size: 10px; font-family: Arial, sans-serif; color: #555;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>'
+            displayHeaderFooter: true, // Enable header/footer
+footerTemplate: `
+    <div style="width: 100%; font-family: sans-serif; text-align: center; font-size: 10px; color: #555;">
+        Page&nbsp;<span class="pageNumber"></span>&nbsp;of&nbsp;<span class="totalPages"></span>
+    </div>
+`,
+
+            headerTemplate: '<div style="display: none;"></div>', // Empty header
         });
         console.log(`PDF generated successfully. Buffer size: ${pdfBuffer.length} bytes.`);
         return pdfBuffer;
@@ -1525,6 +1529,7 @@ async function generatePdfFromHtml(htmlContent) {
             }
         }
     }
+
 
 app.post("/submit-order", requireAuth, async (req, res) => {
     // Destructure new fields: orderedByEmail, orderedByPhone, shippingAccountType, thirdPartyDetails
