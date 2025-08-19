@@ -900,21 +900,24 @@ app.post("/add-user", requireAdmin, async (req, res) => { // Added requireAdmin 
 });
 
 app.post("/edit-user", requireAdmin, async (req, res) => {
-  const { id, email, firstName, lastName, phone, role, password } = req.body;
-  console.log(`[POST /edit-user] Editing user ID: ${id}`);
+  // MODIFIED: Destructure companyId from the request body
+  const { id, email, firstName, lastName, phone, role, password, companyId } = req.body;
+  console.log(`[POST /edit-user] Editing user ID: ${id}. New Company ID: ${companyId}`); // Updated log
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);
+      // MODIFIED: Added company_id to the UPDATE statement
       await conn.execute(
-        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ? WHERE id = ?`,
-        [email, firstName, lastName, phone || '', role, hashedPassword, id]
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, password = ?, company_id = ? WHERE id = ?`,
+        [email, firstName, lastName, phone || '', role, hashedPassword, companyId, id]
       );
     } else {
+      // MODIFIED: Added company_id to the UPDATE statement
       await conn.execute(
-        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ? WHERE id = ?`,
-        [email, firstName, lastName, phone || '', role, id]
+        `UPDATE users SET email = ?, first_name = ?, last_name = ?, phone = ?, role = ?, company_id = ? WHERE id = ?`,
+        [email, firstName, lastName, phone || '', role, companyId, id]
       );
     }
     console.log(`[POST /edit-user] User ID ${id} updated successfully.`);
