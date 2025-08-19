@@ -353,6 +353,36 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
     }
 }
 
+// *** NEW: Function to send a welcome email to a new user joining an existing company ***
+async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
+    try {
+        const mailOptions = {
+            from: "OrderDesk@ChicagoStainless.com",
+            to: userEmail,
+            replyTo: "OrderDesk@ChicagoStainless.com",
+            subject: `Welcome to Chicago Stainless Equipment!`,
+            html: `
+                <p>Dear ${firstName || 'Customer'},</p>
+                <p>Thank you for registering with Chicago Stainless Equipment! Your account has been successfully created under the company: <strong>${companyName}</strong>.</p>
+                <p>Your account is ready to use immediately. You can now log in to our website to place orders, view order history, and manage your shipping addresses.</p>
+                <p>We're excited to have you on board!</p>
+                <p>Sincerely,</p>
+                <p>The Chicago Stainless Equipment Team</p>
+            `,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending welcome email to new user:", error);
+            } else {
+                console.log(`Welcome email sent to new user ${userEmail}:`, info.response);
+            }
+        });
+    } catch (err) {
+        console.error("Error preparing welcome email for new user:", err);
+    }
+}
+
 
 // Function to send company approval email (User)
 async function sendCompanyApprovalEmail(companyId) {
@@ -746,12 +776,13 @@ app.post("/register-user", async (req, res) => {
       [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
     );
 
-    // Conditional email sending
+    // *** MODIFIED: Conditional email sending ***
     if (companyExists) {
-        // Company already existed, send the "new user for existing company" email
+        // Company already existed. Notify admin and send welcome email to user.
         await sendExistingCompanyUserNotificationEmail(companyName, email, firstName, lastName, phone, companyId);
+        await sendWelcomeEmailToNewUser(email, firstName, companyName);
     } else {
-        // This is a brand new company registration, send the original notification
+        // This is a brand new company registration. Send the original notification to admin.
         await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role);
     }
 
