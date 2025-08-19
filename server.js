@@ -312,6 +312,48 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
     }
 }
 
+// NEW: Function to send notification for a new user joining an EXISTING company (Admin)
+async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, firstName, lastName, phone, companyId) {
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [settings] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
+        const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
+
+        const mailOptions = {
+            from: "OrderDesk@ChicagoStainless.com",
+            to: recipientEmail,
+            replyTo: userEmail,
+            subject: `New User Registration for Existing Company: ${companyName}`,
+            html: `
+                <p>Hello Admin,</p>
+                <p>A new user has registered for an existing company account:</p>
+                <ul>
+                    <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
+                    <li><strong>New User Name:</strong> ${firstName} ${lastName}</li>
+                    <li><strong>Email:</strong> ${userEmail}</li>
+                    <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
+                </ul>
+                <p>This user has been automatically granted access under the existing company account. No approval is necessary for the company itself.</p>
+                <p>Thank you.</p>
+            `,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error("Error sending existing company user registration email:", error);
+            } else {
+                console.log("Existing company user registration email sent:", info.response);
+            }
+        });
+    } catch (err) {
+        console.error("Error fetching admin registration email or sending existing company user notification:", err);
+    } finally {
+        if (conn) conn.end();
+    }
+}
+
+
 // Function to send company approval email (User)
 async function sendCompanyApprovalEmail(companyId) {
     let conn;
@@ -670,9 +712,10 @@ app.post("/register-company", async (req, res) => {
 });
 
 app.post("/register-user", async (req, res) => {
-  const { email, firstName, lastName, phone, password, companyId } = req.body;
+  // Destructure the new flags from the body
+  const { email, firstName, lastName, phone, password, companyId, companyExists, companyName } = req.body;
   const role = "user";
-  console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}`);
+  console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}. Company existed: ${companyExists}`);
 
   if (!email || !firstName || !lastName || !password || !companyId) {
     console.warn("[POST /register-user] Missing required fields for user registration.");
@@ -703,8 +746,15 @@ app.post("/register-user", async (req, res) => {
       [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
     );
 
-    // Send notification email to admin
-    await sendRegistrationNotificationEmail(req.body.companyName || "New Company", email, firstName, lastName, phone, companyId, role);
+    // Conditional email sending
+    if (companyExists) {
+        // Company already existed, send the "new user for existing company" email
+        await sendExistingCompanyUserNotificationEmail(companyName, email, firstName, lastName, phone, companyId);
+    } else {
+        // This is a brand new company registration, send the original notification
+        await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role);
+    }
+
     console.log(`[POST /register-user] User ${email} registered successfully.`);
     res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
