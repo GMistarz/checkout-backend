@@ -787,7 +787,11 @@ app.post("/register-user", async (req, res) => {
     }
 
     console.log(`[POST /register-user] User ${email} registered successfully.`);
-    res.status(201).json({ message: "User registered successfully" });
+    // *** MODIFIED: Send companyExists status back to the client ***
+    res.status(201).json({ 
+        message: "User registered successfully",
+        companyExists: !!companyExists // Use !! to ensure a true boolean is sent
+    });
   } catch (err) {
     console.error("Failed to register user:", err);
     res.status(500).json({ error: "Failed to register user due to server error" });
