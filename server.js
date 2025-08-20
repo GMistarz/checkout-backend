@@ -47,7 +47,6 @@ console.log(`Application will attempt to listen on port: ${PORT}`);
 
 
 // Separate database configuration for direct MySQL2 connections
-// Reverted to hardcoded values from your working servers 7-21.js
 const dbConnectionConfig = {
   host: "192.254.232.38",
   user: "gmistarz_cse",
@@ -742,10 +741,10 @@ app.post("/register-company", async (req, res) => {
 });
 
 app.post("/register-user", async (req, res) => {
-  // Destructure the new flags from the body
+  // The `companyExists` flag from the client is used to determine which admin email to send.
   const { email, firstName, lastName, phone, password, companyId, companyExists, companyName } = req.body;
   const role = "user";
-  console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}. Company existed: ${companyExists}`);
+  console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}. Client says company existed: ${companyExists}`);
 
   if (!email || !firstName || !lastName || !password || !companyId) {
     console.warn("[POST /register-user] Missing required fields for user registration.");
@@ -776,21 +775,28 @@ app.post("/register-user", async (req, res) => {
       [email, firstName, lastName, phone || '', role, hashedPassword, companyId]
     );
 
-    // *** MODIFIED: Conditional email sending ***
+    // *** SERVER-SIDE CHECK FOR RESPONSE ***
+    // For the response back to the client, we check the company's actual approval status.
+    // This determines if the user can log in immediately.
+    const [companyRows] = await conn.execute("SELECT approved FROM companies WHERE id = ?", [companyId]);
+    // A company is considered "existing" for login purposes if it's already approved.
+    const isCompanyApproved = companyRows.length > 0 && companyRows[0].approved === 1;
+
+    // Send admin emails based on the client's flag (was it a new company registration flow?)
     if (companyExists) {
-        // Company already existed. Notify admin and send welcome email to user.
         await sendExistingCompanyUserNotificationEmail(companyName, email, firstName, lastName, phone, companyId);
         await sendWelcomeEmailToNewUser(email, firstName, companyName);
     } else {
-        // This is a brand new company registration. Send the original notification to admin.
         await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role);
     }
 
-    console.log(`[POST /register-user] User ${email} registered successfully.`);
-    // *** MODIFIED: Send companyExists status back to the client ***
+    console.log(`[POST /register-user] User ${email} registered successfully. Server check: isCompanyApproved=${isCompanyApproved}`);
+    
+    // *** MODIFIED: Respond with the server's authoritative determination ***
     res.status(201).json({ 
         message: "User registered successfully",
-        companyExists: !!companyExists // Use !! to ensure a true boolean is sent
+        // The client will show the "success/login now" message ONLY if the company was already approved.
+        companyExists: isCompanyApproved 
     });
   } catch (err) {
     console.error("Failed to register user:", err);
@@ -2181,6 +2187,7 @@ async function initializeDatabase() {
             await conn.execute(`ALTER TABLE orders ADD COLUMN orderedByPhone VARCHAR(50);`);
             console.log("'orderedByPhone' column added to 'orders' table.");
         }
+
         if (!existingOrderColumns.includes('attn')) {
             await conn.execute(`ALTER TABLE orders ADD COLUMN attn VARCHAR(255);`);
             console.log("'attn' column added to 'orders' table.");
