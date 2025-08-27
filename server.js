@@ -461,6 +461,13 @@ app.post("/admin-login", async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
+        // Record login history
+        const ip = req.ip || req.connection.remoteAddress;
+        await conn.execute(
+            'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
+            [user.id, ip]
+        );
+        console.log(`[Admin Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
         console.log(`[Admin Login Success] req.session.user set for admin: ${JSON.stringify(req.session.user)}`);
         res.json({ message: "Admin login successful", role: user.role });
 
@@ -482,6 +489,26 @@ app.get("/admin/check-auth", (req, res) => {
     }
 });
 
+// NEW: Endpoint to get login history for a specific user
+app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    console.log(`[GET /admin/user-logins] Fetching login history for user ID: ${userId}`);
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [history] = await conn.execute(
+            "SELECT login_time, ip_address FROM login_history WHERE user_id = ? ORDER BY login_time DESC",
+            [userId]
+        );
+        console.log(`[GET /admin/user-logins] Found ${history.length} login records for user ID: ${userId}`);
+        res.json(history);
+    } catch (err) {
+        console.error("Error fetching user login history:", err);
+        res.status(500).json({ error: "Failed to retrieve login history" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -512,7 +539,13 @@ app.post("/login", async (req, res) => {
         lastName: user.last_name,
         phone: user.phone // Include phone number here
     };
-
+    // Record login history
+    const ip = req.ip || req.connection.remoteAddress;
+    await conn.execute(
+        'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
+        [user.id, ip]
+    );
+    console.log(`[Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
     console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
 
     res.json({ message: "Login successful", role: user.role });
@@ -2065,6 +2098,18 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'users' table checked/created.");
+
+        // Create 'login_history' table if not exists
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS login_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ip_address VARCHAR(45),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB;
+        `);
+        console.log("'login_history' table checked/created.");
 
         // Create 'shipto_addresses' table if not exists with foreign key
         await conn.execute(`
