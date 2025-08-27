@@ -510,6 +510,43 @@ app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
     }
 });
 
+// Endpoint to generate a login report for a date range
+app.get("/admin/login-report", requireAdmin, async (req, res) => {
+    const { startDate, endDate } = req.query;
+    console.log(`[GET /admin/login-report] Report requested for dates: ${startDate} to ${endDate}`);
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ error: "Start date and end date are required." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const query = `
+            SELECT
+                lh.login_time,
+                lh.ip_address,
+                u.email,
+                u.first_name,
+                u.last_name,
+                c.name AS company_name
+            FROM login_history lh
+            JOIN users u ON lh.user_id = u.id
+            JOIN companies c ON u.company_id = c.id
+            WHERE DATE(lh.login_time) BETWEEN ? AND ?
+            ORDER BY lh.login_time DESC;
+        `;
+        const [report] = await conn.execute(query, [startDate, endDate]);
+        console.log(`[GET /admin/login-report] Found ${report.length} records for the date range.`);
+        res.json(report);
+    } catch (err) {
+        console.error("Error generating login report:", err);
+        res.status(500).json({ error: "Failed to generate login report" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn;
