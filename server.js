@@ -645,6 +645,7 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
                 u.first_name,
                 u.last_name,
                 u.email,
+                u.created_at,
                 c.name AS companyName
             FROM users u
             JOIN companies c ON u.company_id = c.id
