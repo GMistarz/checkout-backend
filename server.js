@@ -1122,6 +1122,10 @@ app.post("/delete-company", requireAdmin, async (req, res) => {
   console.log(`[POST /delete-company] Deleting company ID: ${id}`);
   let conn;
   try {
+    if (parseInt(id, 10) === 1) {
+        console.warn("[POST /delete-company] Attempted to delete protected Company ID 1.");
+        return res.status(403).json({ error: "This company cannot be deleted." });
+    }
     conn = await mysql.createConnection(dbConnectionConfig);
     await conn.beginTransaction();
 
