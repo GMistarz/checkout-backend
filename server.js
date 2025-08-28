@@ -2251,6 +2251,23 @@ async function initializeDatabase() {
         `);
         console.log("'users' table checked/created.");
 
+        // Check if 'created_at' column exists in 'users' table before adding it
+        const [usersCreatedAtColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'users' AND COLUMN_NAME = 'created_at';
+        `, [dbConnectionConfig.database]);
+
+        if (usersCreatedAtColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE users
+                ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+            `);
+            console.log("'created_at' column added to 'users' table.");
+        } else {
+            console.log("'created_at' column already exists in 'users' table.");
+        }
+
         // Create 'login_history' table if not exists
         await conn.execute(`
             CREATE TABLE IF NOT EXISTS login_history (
