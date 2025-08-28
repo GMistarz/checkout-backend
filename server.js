@@ -547,6 +547,92 @@ app.get("/admin/login-report", requireAdmin, async (req, res) => {
     }
 });
 
+// Endpoint to generate an orders report for a date range
+app.get("/admin/orders-report", requireAdmin, async (req, res) => {
+    const { startDate, endDate } = req.query;
+    console.log(`[GET /admin/orders-report] Report requested for dates: ${startDate} to ${endDate}`);
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ error: "Start date and end date are required." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const query = `
+            SELECT
+                o.id,
+                o.date,
+                o.poNumber,
+                o.orderedByName,
+                c.name AS companyName
+            FROM orders o
+            JOIN companies c ON o.companyId = c.id
+            WHERE DATE(o.date) BETWEEN ? AND ?
+            ORDER BY o.date DESC;
+        `;
+        const [report] = await conn.execute(query, [startDate, endDate]);
+        console.log(`[GET /admin/orders-report] Found ${report.length} order records for the date range.`);
+        res.json(report);
+    } catch (err) {
+        console.error("Error generating orders report:", err);
+        res.status(500).json({ error: "Failed to generate orders report" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// Endpoint for admins to get full details of any single order
+app.get("/admin/order-details/:orderId", requireAdmin, async (req, res) => {
+    const { orderId } = req.params;
+    console.log(`[GET /admin/order-details] Fetching full details for order ID: ${orderId}`);
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const query = `
+            SELECT o.*, c.terms as companyTerms 
+            FROM orders o
+            JOIN companies c ON o.companyId = c.id
+            WHERE o.id = ?
+        `;
+        const [orders] = await conn.execute(query, [orderId]);
+
+        if (orders.length === 0) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+
+        const order = orders[0];
+        
+        // Format the order object to be compatible with the existing showOrderDetailsModal function
+        const formattedOrder = {
+            id: order.id,
+            poNumber: order.poNumber,
+            shippingMethod: order.shippingMethod,
+            items: order.items, // Already parsed as JSON by mysql2 driver
+            date: order.date,
+            orderedByName: order.orderedByName,
+            orderedByPhone: order.orderedByPhone,
+            billingAddress: order.billingAddress,
+            shippingAddress: order.shippingAddress,
+            attn: order.attn,
+            tag: order.tag,
+            carrierAccount: order.carrierAccount,
+            thirdPartyDetails: order.thirdPartyDetails, // Already parsed as JSON
+            shippingAccountType: order.shippingAccountType,
+            company: { // Mock the company object structure expected by the modal
+                terms: order.companyTerms
+            }
+        };
+
+        res.json(formattedOrder);
+    } catch (err) {
+        console.error("Error fetching single order details:", err);
+        res.status(500).json({ error: "Failed to retrieve order details." });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn;
