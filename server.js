@@ -863,7 +863,7 @@ app.get("/user/:userId", requireAdmin, async (req, res) => {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.execute(
-            "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
+            "SELECT id, email, first_name, last_name, phone, role, company_id, created_at FROM users WHERE id = ?",
             [userId]
         );
         const user = users[0];
