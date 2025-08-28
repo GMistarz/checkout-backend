@@ -633,6 +633,34 @@ app.get("/admin/order-details/:orderId", requireAdmin, async (req, res) => {
     }
 });
 
+// Endpoint to generate a report of all users
+app.get("/admin/users-report", requireAdmin, async (req, res) => {
+    console.log(`[GET /admin/users-report] Report for all users requested.`);
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const query = `
+            SELECT
+                u.id,
+                u.first_name,
+                u.last_name,
+                u.email,
+                c.name AS companyName
+            FROM users u
+            JOIN companies c ON u.company_id = c.id
+            ORDER BY u.last_name ASC, u.first_name ASC;
+        `;
+        const [users] = await conn.execute(query);
+        console.log(`[GET /admin/users-report] Found ${users.length} total users.`);
+        res.json(users);
+    } catch (err) {
+        console.error("Error generating users report:", err);
+        res.status(500).json({ error: "Failed to generate users report" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
   let conn;
@@ -710,7 +738,7 @@ app.get("/user-profile", requireAuth, async (req, res) => {
   }
 });
 
-// NEW: Endpoint to update user profile
+// Endpoint to update user profile
 app.put("/user/update-profile", requireAuth, async (req, res) => {
     const { firstName, lastName, email, phone, currentPassword, newPassword } = req.body;
     const userId = req.session.user.id; // Get user ID from session
