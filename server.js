@@ -1023,7 +1023,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [companies] = await conn.execute("SELECT id, name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied FROM companies ORDER BY name ASC");
+    const [companies] = await conn.execute("SELECT id, name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC");
     console.log(`[GET /companies] Found ${companies.length} companies.`);
     res.json(companies);
   } catch (err) {
@@ -2235,6 +2235,7 @@ async function initializeDatabase() {
                 notes TEXT,
                 approved BOOLEAN DEFAULT FALSE,
                 denied BOOLEAN DEFAULT FALSE
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         `);
         console.log("'companies' table checked/created.");
@@ -2254,6 +2255,23 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'users' table checked/created.");
+
+        // Add ALTER TABLE logic for existing databases
+        const [companiesCreatedAtColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'created_at';
+        `, [dbConnectionConfig.database]);
+
+        if (companiesCreatedAtColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE companies
+                ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+            `);
+            console.log("'created_at' column added to 'companies' table.");
+        } else {
+            console.log("'created_at' column already exists in 'companies' table.");
+        }
 
         // Check if 'created_at' column exists in 'users' table before adding it
         const [usersCreatedAtColumnCheck] = await conn.execute(`
