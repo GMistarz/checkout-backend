@@ -2234,7 +2234,7 @@ async function initializeDatabase() {
                 discount DECIMAL(5,2) DEFAULT 0.00,
                 notes TEXT,
                 approved BOOLEAN DEFAULT FALSE,
-                denied BOOLEAN DEFAULT FALSE
+                denied BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB;
         `);
