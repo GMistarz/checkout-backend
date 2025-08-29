@@ -1032,7 +1032,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   } finally {
     if (conn) conn.end();
   }
-});
+}); 
 
 app.post("/edit-company", requireAdmin, async (req, res) => {
   const { id, name, address1, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body;
