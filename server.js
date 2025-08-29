@@ -1254,8 +1254,7 @@ app.get("/api/shipto/:companyId", authorizeCompanyAccess, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        // MODIFIED: Added carrier_account to the SELECT statement
-        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default, carrier_account FROM shipto_addresses WHERE company_id = ?", [companyId]);
+        const [addresses] = await conn.execute("SELECT id, company_id, name, company_name, address1, city, state, zip, country, is_default, carrier_account, created_at FROM shipto_addresses WHERE company_id = ?", [companyId]);
         console.log(`[GET /api/shipto/:companyId] Found ${addresses.length} ship-to addresses.`);
         res.json(addresses);
     }
@@ -1321,7 +1320,7 @@ app.put("/api/shipto/:addressId", authorizeCompanyAccess, async (req, res) => {
     }
 });
 
-// NEW ENDPOINT: Update carrier_account for a specific shipto_address
+// ENDPOINT: Update carrier_account for a specific shipto_address
 app.put("/api/shipto/:addressId/update-carrier-account", authorizeCompanyAccess, async (req, res) => {
     const { addressId } = req.params;
     const { carrierAccount } = req.body; // Expecting carrierAccount in the body
@@ -2321,7 +2320,7 @@ async function initializeDatabase() {
         `);
         console.log("'shipto_addresses' table checked/created.");
 
-        // NEW: Check if 'carrier_account' column exists before adding it
+        // Check if 'carrier_account' column exists before adding it
         const [columnCheck] = await conn.execute(`
             SELECT COLUMN_NAME
             FROM INFORMATION_SCHEMA.COLUMNS
@@ -2339,6 +2338,22 @@ async function initializeDatabase() {
             console.log("'carrier_account' column already exists in 'shipto_addresses' table.");
         }
 
+        // Check if 'created_at' column exists in 'shipto_addresses' before adding it
+                const [shiptoCreatedAtColumnCheck] = await conn.execute(`
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'shipto_addresses' AND COLUMN_NAME = 'created_at';
+                `, [dbConnectionConfig.database]);
+
+                if (shiptoCreatedAtColumnCheck.length === 0) {
+                    await conn.execute(`
+                        ALTER TABLE shipto_addresses
+                        ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+                    `);
+                    console.log("'created_at' column added to 'shipto_addresses' table.");
+                } else {
+                    console.log("'created_at' column already exists in 'shipto_addresses' table.");
+                }
 
         // Create 'orders' table if not exists
         await conn.execute(`
