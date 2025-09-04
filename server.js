@@ -910,7 +910,7 @@ app.post("/register-company", async (req, res) => {
     const [result] = await conn.execute(
       `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Default to not approved, not denied
-      [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '']
+      [name, logo || '', address1, city, state, zip, country, terms || 'Net 30', discount || 0, '']
     );
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId });
