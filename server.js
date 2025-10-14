@@ -269,8 +269,8 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
     }
 }
 
-// Function to send registration notification email (Admin)
-async function sendRegistrationNotificationEmail(companyName, userEmail, firstName, lastName, phone, companyId, role) {
+// MODIFIED: Function to send registration notification email (Admin)
+async function sendRegistrationNotificationEmail(companyName, userEmail, firstName, lastName, phone, companyId, role, apEmail) {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
@@ -289,6 +289,7 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
                     <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
                     <li><strong>Name:</strong> ${firstName} ${lastName}</li>
                     <li><strong>Email:</strong> ${userEmail}</li>
+                    <li><strong>A/P Email:</strong> ${apEmail || 'N/A'}</li>
                     <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
                     <li><strong>Role:</strong> ${role}</li>
                 </ul>
@@ -645,6 +646,7 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
                 u.first_name,
                 u.last_name,
                 u.email,
+
                 u.created_at,
                 c.name AS companyName
             FROM users u
@@ -897,20 +899,21 @@ app.post("/logout", (req, res) => {
 
 // --- NEW: Registration Endpoints ---
 
+// MODIFIED: /register-company endpoint
 app.post("/register-company", async (req, res) => {
-  const { name, address1, city, state, zip, country, terms, logo, discount } = req.body;
+  const { name, address1, ap_email, city, state, zip, country, terms, logo, discount } = req.body; // Added ap_email
   console.log(`[POST /register-company] Attempting to register company: ${name}`);
-  if (!name || !address1 || !city || !state || !zip) {
+  if (!name || !address1 || !ap_email || !city || !state || !zip) { // Added ap_email to validation
     console.warn("[POST /register-company] Missing required fields for company registration.");
-    return res.status(400).json({ error: "Company name, address, city, state, and zip are required." });
+    return res.status(400).json({ error: "Company name, address, AP email, city, state, and zip are required." });
   }
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Default to not approved, not denied
-      [name, logo || '', address1, city, state, zip, country, terms || 'Net 30', discount || 0, '']
+      `INSERT INTO companies (name, logo, address1, ap_email, city, state, zip, country, terms, discount, notes, approved, denied)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
+      [name, logo || '', address1, ap_email, city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId });
@@ -925,9 +928,10 @@ app.post("/register-company", async (req, res) => {
   }
 });
 
+// MODIFIED: /register-user endpoint
 app.post("/register-user", async (req, res) => {
   // The `companyExists` flag from the client is used to determine which admin email to send.
-  const { email, firstName, lastName, phone, password, companyId, companyExists, companyName } = req.body;
+  const { email, firstName, lastName, phone, password, companyId, companyExists, companyName, apEmail } = req.body; // Added apEmail
   const role = "user";
   console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}. Client says company existed: ${companyExists}`);
 
@@ -972,7 +976,7 @@ app.post("/register-user", async (req, res) => {
         await sendExistingCompanyUserNotificationEmail(companyName, email, firstName, lastName, phone, companyId);
         await sendWelcomeEmailToNewUser(email, firstName, companyName);
     } else {
-        await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role);
+        await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role, apEmail); // Pass apEmail
     }
 
     console.log(`[POST /register-user] User ${email} registered successfully. Server check: isCompanyApproved=${isCompanyApproved}`);
@@ -1023,7 +1027,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [companies] = await conn.execute("SELECT id, name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC");
+    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
     console.log(`[GET /companies] Found ${companies.length} companies.`);
     res.json(companies);
   } catch (err) {
@@ -1034,8 +1038,9 @@ app.get("/companies", requireAdmin, async (req, res) => {
   }
 });
 
+// MODIFIED: /edit-company endpoint
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body;
+  const { id, name, address1, ap_email, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body; // Added ap_email
   console.log(`[POST /edit-company] Editing company ID: ${id}`);
   if (!id) {
     console.warn("[POST /edit-company] Company ID is required for update.");
@@ -1055,6 +1060,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
     if (name !== undefined) { fieldsToUpdate.push("name = ?"); values.push(name); }
     if (address1 !== undefined) { fieldsToUpdate.push("address1 = ?"); values.push(address1); }
+    if (ap_email !== undefined) { fieldsToUpdate.push("ap_email = ?"); values.push(ap_email); } // Added ap_email
     if (city !== undefined) { fieldsToUpdate.push("city = ?"); values.push(city); }
     if (state !== undefined) { fieldsToUpdate.push("state = ?"); values.push(state); }
     if (zip !== undefined) { fieldsToUpdate.push("zip = ?"); values.push(zip); }
@@ -1674,21 +1680,16 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
 
     return `
-        <!-- Main Container for Email Content -->
         <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #000000; position: relative;">
 
-            <!-- Header Section using Table for Layout -->
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
                 <tr>
-                    <!-- Logo Cell -->
                     <td style="width: 95px; text-align: left; vertical-align: middle; padding: 0;">
                         <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
                     </td>
-                    <!-- Centered Title Cell -->
                     <td style="text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
                     </td>
-                    <!-- Date and Time Cell -->
                     <td style="width: 95px; text-align: right; vertical-align: middle; padding: 0;">
                         <div style="font-size: 12px; color: #000000; line-height: 1.2;">
                             <p style="margin: 0;">${currentDate}</p>
@@ -1705,8 +1706,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
                     <td style="width: 50%; text-align: left; vertical-align: middle; padding: 0;">
                         <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
                     </td>
-                    <td style="width: 50%; padding: 0;"></td> <!-- Empty cell as RUSH is now an image stamp -->
-                </tr>
+                    <td style="width: 50%; padding: 0;"></td> </tr>
             </table>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
@@ -1733,12 +1733,8 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
                 </tr>
             </table>
 
-            ${rushImageHtml} <!-- RUSH image stamp inserted here -->
-
-            <h2 style="color: #000000; font-size: 20px; margin: 0; margin-bottom: 10px;">Order Summary</h2>
-            ${carrierLogoHtml} <!-- Carrier logo now floats here -->
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            ${rushImageHtml} <h2 style="color: #000000; font-size: 20px; margin: 0; margin-bottom: 10px;">Order Summary</h2>
+            ${carrierLogoHtml} <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
                 <thead>
                     <tr>
                         <th style="border: 1px solid #ccc; padding: 8px; background-color: #e0e0e0; text-align: center; color: #000000;">Qty</th>
@@ -2208,7 +2204,7 @@ app.get("/", (req, res) => {
   res.redirect("/admin-dashboard.html");
 });
 
-// Database Initialization Function
+// MODIFIED: Database Initialization Function
 async function initializeDatabase() {
     let conn;
     try {
@@ -2225,6 +2221,7 @@ async function initializeDatabase() {
                 name VARCHAR(255) NOT NULL UNIQUE,
                 logo VARCHAR(255),
                 address1 TEXT,
+                ap_email VARCHAR(255),
                 city VARCHAR(255),
                 state VARCHAR(255),
                 zip VARCHAR(20),
@@ -2238,6 +2235,22 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'companies' table checked/created.");
+
+        // Check if 'ap_email' column exists in 'companies' table before adding it
+        const [apEmailColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'ap_email';
+        `, [dbConnectionConfig.database]);
+
+        if (apEmailColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE companies ADD COLUMN ap_email VARCHAR(255) AFTER address1;
+            `);
+            console.log("'ap_email' column added to 'companies' table.");
+        } else {
+            console.log("'ap_email' column already exists in 'companies' table.");
+        }
 
         // Create 'users' table if not exists with foreign key
         await conn.execute(`
