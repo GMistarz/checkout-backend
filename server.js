@@ -48,7 +48,7 @@ console.log(`Application will attempt to listen on port: ${PORT}`);
 
 // Separate database configuration for direct MySQL2 connections
 const dbConnectionConfig = {
-  host: "192.254.232.38",
+  host: process.env.DB_HOST, // Was host: "192.254.232.38",
   user: "gmistarz_cse",
   password: "Csec@1280",
   database: "gmistarz_cse",
