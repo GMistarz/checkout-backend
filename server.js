@@ -270,7 +270,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
 }
 
 // MODIFIED: Function to send registration notification email (Admin)
-async function sendRegistrationNotificationEmail(companyName, userEmail, firstName, lastName, phone, companyId, role, apEmail) {
+async function sendRegistrationNotificationEmail(companyName, userEmail, firstName, lastName, phone, companyId, role, apEmail, pdfBuffer) { // ADDED pdfBuffer
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
@@ -294,8 +294,16 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
                     <li><strong>Role:</strong> ${role}</li>
                 </ul>
                 <p>Please log into the admin dashboard to review and approve the company.</p>
+                ${pdfBuffer ? '<p>The contents of the user\'s shopping cart at the time of registration is attached as a PDF.</p>' : ''}
                 <p>Thank you.</p>
             `,
+            attachments: pdfBuffer ? [
+                {
+                    filename: `Cart_Registration_${companyName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+                    content: pdfBuffer,
+                    contentType: 'application/pdf'
+                }
+            ] : []
         };
 
         transporter.sendMail(mailOptions, (error, info) => {
@@ -825,6 +833,7 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
 
   if (isNaN(userCompanyId) || userCompanyId <= 0) {
     console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
+
     return res.status(404).json({ error: "No company associated with this user." });
   }
 
@@ -928,10 +937,10 @@ app.post("/register-company", async (req, res) => {
   }
 });
 
-// MODIFIED: /register-user endpoint
+// MODIFIED: /register-user endpoint (Includes shopping cart PDF logic)
 app.post("/register-user", async (req, res) => {
-  // The `companyExists` flag from the client is used to determine which admin email to send.
-  const { email, firstName, lastName, phone, password, companyId, companyExists, companyName, apEmail } = req.body; // Added apEmail
+  // Added cartItems to destructuring
+  const { email, firstName, lastName, phone, password, companyId, companyExists, companyName, apEmail, cartItems } = req.body; 
   const role = "user";
   console.log(`[POST /register-user] Attempting to register user: ${email} for company ID: ${companyId}. Client says company existed: ${companyExists}`);
 
@@ -965,18 +974,70 @@ app.post("/register-user", async (req, res) => {
     );
 
     // *** SERVER-SIDE CHECK FOR RESPONSE ***
-    // For the response back to the client, we check the company's actual approval status.
-    // This determines if the user can log in immediately.
-    const [companyRows] = await conn.execute("SELECT approved FROM companies WHERE id = ?", [companyId]);
-    // A company is considered "existing" for login purposes if it's already approved.
+    const [companyRows] = await conn.execute("SELECT approved, terms FROM companies WHERE id = ?", [companyId]);
     const isCompanyApproved = companyRows.length > 0 && companyRows[0].approved === 1;
+    const companyTerms = companyRows[0].terms || 'N/A';
+
+    // --- NEW: CART / PDF GENERATION LOGIC ---
+    let cartPdfBuffer = null;
+    if (!companyExists && cartItems && cartItems.length > 0) {
+         console.log("[POST /register-user] New company registration with a cart. Generating cart PDF.");
+         
+         // Adapt cart items to the structure expected by generateOrderHtmlEmail
+         const cartItemsForPdf = cartItems.map(item => {
+             const netPrice = item.price; 
+             const lineTotal = item.quantity * netPrice;
+             return {
+                 partNo: item.partNo,
+                 description: item.description,
+                 quantity: item.quantity,
+                 netPrice: netPrice,
+                 lineTotal: lineTotal,
+                 note: item.note
+             };
+         });
+
+         // Create a dummy order object for the generateOrderHtmlEmail function
+         const cartDetailsForEmail = {
+             poNumber: 'N/A (Registration)', 
+             orderedBy: `${firstName} ${lastName}`, 
+             orderedByEmail: email, 
+             orderedByPhone: phone, 
+             billingAddress: `[BILLING ADDRESS: Not Available at Registration]\nCompany: ${companyName}`, 
+             shippingAddress: `[SHIPPING ADDRESS: Not Available at Registration]\nCompany: ${companyName}`, 
+             attn: 'N/A', 
+             tag: 'N/A', 
+             shippingMethod: 'Not Specified', 
+             shippingAccountType: 'N/A', 
+             carrierAccount: 'N/A', 
+             items: cartItemsForPdf,
+             terms: companyTerms, 
+             thirdPartyDetails: null
+         };
+         
+         // Call the existing function to generate the HTML for the cart
+         const originalOrderHtml = generateOrderHtmlEmail(cartDetailsForEmail);
+         // Modify the title to clearly indicate it's a registration cart
+         const cartHtmlContent = originalOrderHtml.replace('CSE WEBSITE ORDER', 'NEW REGISTRATION SHOPPING CART'); 
+
+         try {
+            // NOTE: The generatePdfFromHtml function must be defined elsewhere in server.js
+            cartPdfBuffer = await generatePdfFromHtml(cartHtmlContent);
+            console.log("Cart PDF generated successfully for registration.");
+         } catch (pdfError) {
+            console.error("Failed to generate Cart PDF for registration, proceeding without attachment:", pdfError);
+         }
+    }
+    // --- END: CART / PDF GENERATION LOGIC ---
+
 
     // Send admin emails based on the client's flag (was it a new company registration flow?)
     if (companyExists) {
         await sendExistingCompanyUserNotificationEmail(companyName, email, firstName, lastName, phone, companyId);
         await sendWelcomeEmailToNewUser(email, firstName, companyName);
     } else {
-        await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role, apEmail); // Pass apEmail
+        // PASS THE NEW pdfBuffer HERE
+        await sendRegistrationNotificationEmail(companyName || "New Company", email, firstName, lastName, phone, companyId, role, apEmail, cartPdfBuffer); 
     }
 
     console.log(`[POST /register-user] User ${email} registered successfully. Server check: isCompanyApproved=${isCompanyApproved}`);
@@ -1538,7 +1599,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
                 <p>You can now log in and place orders.</p>
                 <p>Login Page: <a href="${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}">${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}</a></p>
                 <p>If you have any questions, please do not hesitate to contact us.</p>
-                <p>Thank you for choosing Chicago Stainless Equipment, Inc.</p>
+                <p>Thank Thank you for choosing Chicago Stainless Equipment, Inc.</p>
                 <p>Sincerely,</p>
                 <p>The Chicago Stainless Equipment Team</p>
             `,
@@ -2056,13 +2117,14 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 o.date,
                 o.orderedByEmail,
                 o.orderedByPhone,
+                o.orderedByName,
                 o.billingAddress,
                 o.attn,
                 o.tag,
                 o.carrierAccount,
                 o.thirdPartyDetails,
+                o.shippingAccountType,
                 o.shippingAddressId,
-                o.orderedByName,
                 s.name AS shipToAddressName,
                 s.address1 AS shipToAddress1,
                 s.city AS shipToAddressCity,
@@ -2133,13 +2195,8 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             }
 
             // Determine shippingAccountType based on available data
-            let determinedShippingAccountType = 'Prepaid'; // Default
-            if (parsedThirdPartyDetails && Object.keys(parsedThirdPartyDetails).length > 0) {
-                determinedShippingAccountType = 'Third Party Billing';
-            } else if (order.carrierAccount && order.carrierAccount.trim() !== '') {
-                determinedShippingAccountType = 'Collect';
-            }
-
+            let determinedShippingAccountType = order.shippingAccountType || 'Prepaid'; // Default
+            
             let displayShippingAddress = order.shippingAddress;
             if (order.shipToAddressName) {
                 displayShippingAddress = `${order.shipToAddressName}\n${order.shipToAddress1}\n${order.shipToAddressCity}, ${order.shipToAddressState} ${order.shipToAddressZip} ${order.shipToAddressCountry}`;
@@ -2497,6 +2554,7 @@ async function initializeDatabase() {
         // --- Create a default company and admin user ONLY if no companies exist ---
         const [existingCompanies] = await conn.execute("SELECT id FROM companies LIMIT 1");
         if (existingCompanies.length === 0) {
+
             console.log("No companies found. Creating a default company and admin user.");
 
             // Create a default company
