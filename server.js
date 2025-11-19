@@ -139,6 +139,13 @@ const transporter = nodemailer.createTransport({
 // NEW: Log Nodemailer configuration details (excluding password for security)
 console.log(`Nodemailer Config: Host=${process.env.SMTP_HOST}, Port=${process.env.SMTP_PORT}, Secure=${process.env.SMTP_SECURE}, User=${process.env.EMAIL_USER}`);
 
+// --- NEW: Excluded Emails for Login History Logging ---
+const EXCLUDED_LOGGING_EMAILS = [
+    "greg@chicagostainless.com",
+    "gregm@chicagostainless.com",
+    "emma@chicagostainless.com",
+];
+// --------------------------------------------------------
 
 // --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
@@ -258,6 +265,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         transporter.sendMail(mailOptions, (error, info) => {
             if (error) {
                 console.error("Error sending order notification email:", error);
+
             } else {
                 console.log("Order notification email sent:", info.response);
             }
@@ -468,13 +476,22 @@ app.post("/admin-login", async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
-        // Record login history
-        const ip = req.ip || req.connection.remoteAddress;
-        await conn.execute(
-            'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
-            [user.id, ip]
-        );
-        console.log(`[Admin Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
+        
+        // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
+        const userEmailLower = user.email.toLowerCase();
+        if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
+            // Record login history only if the email is not in the exclusion list
+            const ip = req.ip || req.connection.remoteAddress;
+            await conn.execute(
+                'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
+                [user.id, ip]
+            );
+            console.log(`[Admin Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
+        } else {
+            console.log(`[Admin Login Success] Login history skipped for excluded email: ${user.email}`);
+        }
+        // --- END MODIFIED LOGIC ---
+        
         console.log(`[Admin Login Success] req.session.user set for admin: ${JSON.stringify(req.session.user)}`);
         res.json({ message: "Admin login successful", role: user.role });
 
@@ -699,13 +716,22 @@ app.post("/login", async (req, res) => {
         lastName: user.last_name,
         phone: user.phone // Include phone number here
     };
-    // Record login history
-    const ip = req.ip || req.connection.remoteAddress;
-    await conn.execute(
-        'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
-        [user.id, ip]
-    );
-    console.log(`[Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
+
+    // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
+    const userEmailLower = user.email.toLowerCase();
+    if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
+        // Record login history only if the email is not in the exclusion list
+        const ip = req.ip || req.connection.remoteAddress;
+        await conn.execute(
+            'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
+            [user.id, ip]
+        );
+        console.log(`[Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
+    } else {
+        console.log(`[Login Success] Login history skipped for excluded email: ${user.email}`);
+    }
+    // --- END MODIFIED LOGIC ---
+
     console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
 
     res.json({ message: "Login successful", role: user.role });
@@ -1760,7 +1786,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
             <hr style="border: none; border-top: 1px solid #ccc; margin: 5px 0 10px 0;">
 
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
                 <tr>
                     <td style="width: 50%; text-align: left; vertical-align: middle; padding: 0;">
                         <p style="font-size: 18px; font-weight: bold; color: #000000; margin: 0;"><span style="background-color: yellow; padding: 2px 5px; border-radius: 3px;"><strong>PO#:</strong> ${orderData.poNumber}</span></p>
