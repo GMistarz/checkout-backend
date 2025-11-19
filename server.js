@@ -442,8 +442,6 @@ async function sendCompanyApprovalEmail(companyId) {
         if (conn) conn.end();
     }
 }
-
-
 // --- Authentication Routes ---
 
 // NEW: Admin Login Route
@@ -923,7 +921,6 @@ app.post("/register-company", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
       [name, logo || '', address1, ap_email, city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
-
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId });
   } catch (err) {
@@ -980,6 +977,7 @@ app.post("/register-user", async (req, res) => {
 
     // --- NEW: CART / PDF GENERATION LOGIC ---
     let cartPdfBuffer = null;
+    // Check if it's a NEW company registration AND cart data was sent
     if (!companyExists && cartItems && cartItems.length > 0) {
          console.log("[POST /register-user] New company registration with a cart. Generating cart PDF.");
          
@@ -1526,7 +1524,6 @@ app.post("/admin/settings", requireAdmin, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-
         const [existing] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
         if (existing.length > 0) {
             await conn.execute(
@@ -1821,82 +1818,98 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     `;
 }
 
-// NEW: Function to generate PDF from HTML content and add page numbers manually
+// MODIFIED: Function to generate PDF from HTML content with retry logic
 async function generatePdfFromHtml(htmlContent) {
-    let browser;
-    let userDataDir;
-    try {
-        userDataDir = path.join(os.tmpdir(), `puppeteer_user_data_${uuidv4()}`);
-        await fs.mkdir(userDataDir, { recursive: true });
-        console.log(`Created temporary user data directory: ${userDataDir}`);
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000;
 
-        browser = await puppeteer.launch({
-            args: [...chromium.args, '--disable-gpu', '--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox'],
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-            ignoreHTTPSErrors: true,
-            userDataDir: userDataDir
-        });
-        const page = await browser.newPage();
+    for (let retry = 1; retry <= MAX_RETRIES; retry++) {
+        let browser;
+        let userDataDir;
+        try {
+            userDataDir = path.join(os.tmpdir(), `puppeteer_user_data_${uuidv4()}`);
+            await fs.mkdir(userDataDir, { recursive: true });
+            console.log(`[PDF Gen] Attempt ${retry}/${MAX_RETRIES}: Starting browser. Temp dir: ${userDataDir}`);
 
-        await page.setContent(htmlContent, {
-            waitUntil: 'networkidle0'
-        });
-
-        // Generate the PDF *without* the faulty footer template
-        const pdfBuffer = await page.pdf({
-            format: 'Letter',
-            printBackground: true,
-            margin: {
-                top: '0.2in',
-                right: '0.3in',
-                bottom: '0.3in',
-                left: '0.3in'
-            }
-        });
-        console.log(`Initial PDF generated. Buffer size: ${pdfBuffer.length} bytes.`);
-
-        // === Manually add page numbers using pdf-lib ===
-        const pdfDoc = await PDFDocument.load(pdfBuffer);
-        const totalPages = pdfDoc.getPageCount();
-        const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const pages = pdfDoc.getPages();
-
-        for (let i = 0; i < totalPages; i++) {
-            const currentPage = pages[i];
-            const { width, height } = currentPage.getSize();
-            const text = `Page ${i + 1} of ${totalPages}`;
-            const textSize = 10;
-            const textWidth = helveticaFont.widthOfTextAtSize(text, textSize);
-
-            currentPage.drawText(text, {
-                x: width / 2 - textWidth / 2, // Center horizontally
-                y: 15,                        // 15 points from the bottom
-                size: textSize,
-                font: helveticaFont,
-                color: rgb(0.33, 0.33, 0.33), // A dark gray color
+            browser = await puppeteer.launch({
+                args: [...chromium.args, '--disable-gpu', '--disable-dev-shm-usage', '--no-sandbox', '--disable-setuid-sandbox'],
+                executablePath: await chromium.executablePath(),
+                headless: chromium.headless,
+                ignoreHTTPSErrors: true,
+                userDataDir: userDataDir,
+                timeout: 30000 // Global launch timeout
             });
-        }
+            const page = await browser.newPage();
+            page.setDefaultTimeout(30000); // Navigation/Wait timeout
 
-        const finalPdfBytes = await pdfDoc.save();
-        console.log(`Final PDF with page numbers created. Buffer size: ${finalPdfBytes.length} bytes.`);
-        
-        // Return the modified PDF as a Buffer
-        return Buffer.from(finalPdfBytes);
+            await page.setContent(htmlContent, {
+                waitUntil: 'networkidle0'
+            });
 
-    } catch (error) {
-        console.error("Error generating PDF:", error);
-        throw new Error("Failed to generate PDF for order confirmation.");
-    } finally {
-        if (browser) {
+            const pdfBuffer = await page.pdf({
+                format: 'Letter',
+                printBackground: true,
+                margin: {
+                    top: '0.2in',
+                    right: '0.3in',
+                    bottom: '0.3in',
+                    left: '0.3in'
+                }
+            });
+            
             await browser.close();
-        }
-        if (userDataDir) {
-            try {
-                await fs.rm(userDataDir, { recursive: true, force: true });
-                console.log(`Cleaned up temporary user data directory: ${userDataDir}`);
-            } catch (cleanupError) {
-                console.error(`Error cleaning up user data directory ${userDataDir}:`, cleanupError);
+            browser = null; // Mark as closed
+            
+            console.log(`[PDF Gen] Attempt ${retry}/${MAX_RETRIES}: Initial PDF generated successfully.`);
+
+            // === Manually add page numbers using pdf-lib ===
+            const pdfDoc = await PDFDocument.load(pdfBuffer);
+            const totalPages = pdfDoc.getPageCount();
+            const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+            const pages = pdfDoc.getPages();
+
+            for (let i = 0; i < totalPages; i++) {
+                const currentPage = pages[i];
+                const { width, height } = currentPage.getSize();
+                const text = `Page ${i + 1} of ${totalPages}`;
+                const textSize = 10;
+                const textWidth = helveticaFont.widthOfTextAtSize(text, textSize);
+
+                currentPage.drawText(text, {
+                    x: width / 2 - textWidth / 2, // Center horizontally
+                    y: 15,                        // 15 points from the bottom
+                    size: textSize,
+                    font: helveticaFont,
+                    color: rgb(0.33, 0.33, 0.33), // A dark gray color
+                });
+            }
+
+            const finalPdfBytes = await pdfDoc.save();
+            console.log(`[PDF Gen] Attempt ${retry}/${MAX_RETRIES}: Final PDF with page numbers created.`);
+            
+            return Buffer.from(finalPdfBytes);
+
+        } catch (error) {
+            console.error(`[PDF Gen] Attempt ${retry}/${MAX_RETRIES} FAILED:`, error.message);
+            if (retry === MAX_RETRIES) {
+                // Last attempt failed, throw the final error
+                console.error("[PDF Gen] All retries failed. PDF generation definitively failed.");
+                throw new Error("Failed to generate PDF after multiple retries.");
+            }
+            // Delay before retrying
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        } finally {
+            if (browser) {
+                // Ensure browser is closed if it crashed before the close() call
+                try { await browser.close(); } catch (e) { console.error("[PDF Gen] Error closing stalled browser:", e); }
+            }
+            if (userDataDir) {
+                try {
+                    await fs.rm(userDataDir, { recursive: true, force: true });
+                    // console.log(`[PDF Gen] Cleaned up temporary user data directory: ${userDataDir}`); // Commenting out for cleaner logs
+                } catch (cleanupError) {
+                    console.error(`[PDF Gen] Error cleaning up user data directory ${userDataDir}:`, cleanupError);
+                }
             }
         }
     }
