@@ -343,7 +343,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
                     <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
                 </ul>
                 <p>This user has been automatically granted access under the existing company account. No approval is necessary for the company itself.</p>
-                <p>Thank you.</p>
+                <p>Thank Thank you.</p>
             `,
         };
 
@@ -833,7 +833,6 @@ app.get("/user/company-details", requireAuth, async (req, res) => {
 
   if (isNaN(userCompanyId) || userCompanyId <= 0) {
     console.error("[User Company Details] No valid company ID associated with this user in session after parsing.");
-
     return res.status(404).json({ error: "No company associated with this user." });
   }
 
@@ -924,6 +923,7 @@ app.post("/register-company", async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
       [name, logo || '', address1, ap_email, city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
+
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId });
   } catch (err) {
@@ -1526,6 +1526,7 @@ app.post("/admin/settings", requireAdmin, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
+
         const [existing] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
         if (existing.length > 0) {
             await conn.execute(
@@ -2554,7 +2555,6 @@ async function initializeDatabase() {
         // --- Create a default company and admin user ONLY if no companies exist ---
         const [existingCompanies] = await conn.execute("SELECT id FROM companies LIMIT 1");
         if (existingCompanies.length === 0) {
-
             console.log("No companies found. Creating a default company and admin user.");
 
             // Create a default company
