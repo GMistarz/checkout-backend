@@ -514,15 +514,12 @@ app.get("/admin/check-auth", (req, res) => {
     }
 });
 
-// NEW: Impersonate Token Generation Endpoint
+// MODIFIED: Impersonate Link Generation Endpoint (Admin side)
 app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
     const { userId } = req.params;
     console.log(`[GET /admin/impersonate] Admin ${req.session.user.email} attempting to impersonate user ID: ${userId}`);
     
-    // NOTE: In a real-world application, this endpoint would generate a secure, temporary JWT
-    // with limited scope and return it for client-side authentication in the new window.
-    
-    // For this example, we return a dummy token to satisfy the frontend's expected flow.
+    // For this demonstration, we return a placeholder token that includes the user ID
     const token = `IMPERSONATION_TOKEN_FOR_${userId}`;
 
     // You could also perform a quick lookup here to ensure the user exists
@@ -534,16 +531,80 @@ app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
             console.warn(`[GET /admin/impersonate] User ID ${userId} not found.`);
             return res.status(404).json({ error: "User not found for impersonation" });
         }
-        console.log(`[GET /admin/impersonate] Placeholder token generated for user ID ${userId}.`);
-        res.json({ token: token });
+
+        // Return a redirect URL that includes the token/key
+        // This is the URL the Admin's browser will navigate to first.
+        const redirectUrl = `${API_URL}/login-via-token/${token}`; // Use full API URL here for cross-origin navigation
+
+        console.log(`[GET /admin/impersonate] Redirect link generated: ${redirectUrl}`);
+        // IMPORTANT: Returning a 200 OK with the URL, so the frontend can open a new window.
+        res.json({ redirectUrl: redirectUrl });
 
     } catch (err) {
-        console.error("Error during impersonation token generation:", err);
-        res.status(500).json({ error: "Server error during token generation" });
+        console.error("Error during impersonation link generation:", err);
+        res.status(500).json({ error: "Server error during link generation" });
     } finally {
         if (conn) conn.end();
     }
-}); // <-- New Impersonation route added here
+}); 
+
+// NEW: Token Exchange Route (Handles the browser redirect and sets the session)
+app.get("/login-via-token/:token", async (req, res) => {
+    const { token } = req.params;
+    console.log(`[GET /login-via-token] Received token via URL: ${token}`);
+
+    if (!token || !token.startsWith("IMPERSONATION_TOKEN_FOR_")) {
+        console.warn("[Login Via Token] Invalid or missing token format.");
+        // Use send() instead of json() for this error, as it's a redirect route
+        return res.status(401).send("Invalid impersonation link.");
+    }
+
+    const userId = parseInt(token.replace("IMPERSONATION_TOKEN_FOR_", ""), 10);
+    if (isNaN(userId)) {
+        console.warn("[Login Via Token] Invalid user ID extracted from token.");
+        return res.status(401).send("Invalid impersonation link format.");
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        // Retrieve full user details needed for session setup
+        const [users] = await conn.execute(
+            "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
+            [userId]
+        );
+        const user = users[0];
+
+        if (!user) {
+            console.warn(`[Login Via Token] User ID ${userId} not found.`);
+            return res.status(404).send("User not found.");
+        }
+
+        // Set the session for the impersonated user
+        req.session.user = {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            companyId: user.company_id,
+            firstName: user.first_name,
+            lastName: user.last_name,
+            phone: user.phone
+        };
+
+        console.log(`[Login Via Token] Session successfully established for user ID ${userId}. Redirecting.`);
+        
+        // This is the CRITICAL step: Redirect the browser back to the clean portal URL.
+        // The session cookie set above will now be used by the browser for this navigation.
+        // Using res.redirect ensures the session cookie is correctly handled.
+        res.redirect(`/customer-portal.html`);
+
+    } catch (err) {
+        console.error("Error during impersonation token exchange:", err);
+        res.status(500).send("Server error during login via token.");
+    } finally {
+        if (conn) conn.end();
+    }
+});
 
 
 // NEW: Endpoint to get login history for a specific user
@@ -1739,45 +1800,12 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         thirdPartyCountryHtml = `<p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_country}</p>`;
     }
 
-    // FIX: Changed condition to check shippingAccountType instead of shippingMethod
-    // Adjusted font size to 12px, removed labels, and removed Account #.
-    if (orderData.shippingAccountType === "Third Party Billing" && thirdParty) {
-        itemsHtml += `
-            <tr>
-                <td colspan="2" style="border: 1px solid #ccc; padding: 8px; color: #000000; vertical-align: top;">
-                    <p style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">Third Party Billing Details:</p>
-                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_name || ''}</p>
-                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_address1 || ''}</p>
-                    <p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_city || ''}, ${thirdParty.third_party_state || ''} ${thirdParty.third_party_zip || ''}</p>
-                    ${thirdPartyCountryHtml}
-                </td>
-                <td colspan="2" style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000; vertical-align: top;"></td>
-            </tr>
-        `;
-        console.log("generateOrderHtmlEmail: Third Party Billing Details HTML added.");
-    } else {
-        console.log("generateOrderHtmlEmail: Third Party Billing Details not added. Condition not met.");
-    }
-
-
-    const totalQuantity = orderData.items.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = orderData.items.reduce((sum, item) => sum + item.lineTotal, 0); // Sum lineTotal for overall total
-
     // Determine if "RUSH" indicator is needed
     const shippingMethodLower = orderData.shippingMethod.toLowerCase();
     const isRush = shippingMethodLower.includes("next day air") ||
                    shippingMethodLower.includes("saturday") ||
                    shippingMethodLower.includes("overnight");
 
-    // RUSH image HTML - positioned absolutely over the content
-    /*
-    const rushImageHtmlContent = `
-        <div style="position: absolute; top: -5px; right: 20px; z-index: 100;">
-            <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
-        </div>
-    `;
-    const rushImageHtml = isRush ? rushImageHtmlContent : ''; 
-    */
     const rushImageHtml = ''; // Set to empty string to disable the rush image. The 'isRush' constant is still used for highlighting the 'Ship Via' text.
 
 
