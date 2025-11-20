@@ -48,6 +48,10 @@ console.log(`Application will attempt to listen on port: ${PORT}`);
 // FIX: Define API_URL globally in the backend for generating redirect links
 const API_URL = process.env.API_URL || "https://checkout-backend-jvyx.onrender.com";
 
+// FIX: Define FRONTEND_URL for redirects (Default to your frontend Render URL)
+// You should set this in your Render Environment Variables if it differs.
+const FRONTEND_URL = process.env.FRONTEND_URL || "https://checkout-frontend.onrender.com";
+
 
 // Separate database configuration for direct MySQL2 connections
 const dbConnectionConfig = {
@@ -618,10 +622,11 @@ app.get("/login-via-token/:token", async (req, res) => {
             });
         });
 
-        console.log(`[Login Via Token] Session successfully established for user ID ${userId}. Redirecting.`);
+        console.log(`[Login Via Token] Session successfully established for user ID ${userId}. Redirecting to Frontend.`);
         
-        // This is the CRITICAL step: Redirect the browser back to the clean portal URL.
-        res.redirect(`/customer-portal.html`);
+        // CRITICAL FIX: Redirect to the FRONTEND_URL instead of the local backend path
+        // This ensures the user lands on the deployed frontend where customer-portal.html exists.
+        res.redirect(`${FRONTEND_URL}/customer-portal.html`);
 
     } catch (err) {
         console.error("Error during impersonation token exchange:", err);
