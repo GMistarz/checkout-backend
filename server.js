@@ -123,6 +123,17 @@ app.use(session({
 // Serve static files from 'public' directory
 app.use(express.static("public"));
 
+// --- FIX: Fallback Routes for HTML Files ---
+// If files are in the root directory instead of 'public', these routes serve them directly.
+app.get('/admin-dashboard.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
+});
+
+app.get('/customer-portal.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'customer-portal.html'));
+});
+// -------------------------------------------
+
 
 // --- Nodemailer Transporter Configuration ---
 // IMPORTANT: Reverted to use SMTP_HOST, SMTP_PORT, SMTP_SECURE as per your working servers 7-21.js
