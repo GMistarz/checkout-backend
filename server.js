@@ -266,6 +266,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
             if (error) {
                 console.error("Error sending order notification email:", error);
 
+
             } else {
                 console.log("Order notification email sent:", info.response);
             }
@@ -513,6 +514,38 @@ app.get("/admin/check-auth", (req, res) => {
     }
 });
 
+// NEW: Impersonate Token Generation Endpoint
+app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    console.log(`[GET /admin/impersonate] Admin ${req.session.user.email} attempting to impersonate user ID: ${userId}`);
+    
+    // NOTE: In a real-world application, this endpoint would generate a secure, temporary JWT
+    // with limited scope and return it for client-side authentication in the new window.
+    
+    // For this example, we return a dummy token to satisfy the frontend's expected flow.
+    const token = `IMPERSONATION_TOKEN_FOR_${userId}`;
+
+    // You could also perform a quick lookup here to ensure the user exists
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [users] = await conn.execute("SELECT id FROM users WHERE id = ?", [userId]);
+        if (users.length === 0) {
+            console.warn(`[GET /admin/impersonate] User ID ${userId} not found.`);
+            return res.status(404).json({ error: "User not found for impersonation" });
+        }
+        console.log(`[GET /admin/impersonate] Placeholder token generated for user ID ${userId}.`);
+        res.json({ token: token });
+
+    } catch (err) {
+        console.error("Error during impersonation token generation:", err);
+        res.status(500).json({ error: "Server error during token generation" });
+    } finally {
+        if (conn) conn.end();
+    }
+}); // <-- New Impersonation route added here
+
+
 // NEW: Endpoint to get login history for a specific user
 app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
     const { userId } = req.params;
@@ -548,11 +581,14 @@ app.get("/admin/login-report", requireAdmin, async (req, res) => {
         conn = await mysql.createConnection(dbConnectionConfig);
         const query = `
             SELECT
+                lh.id,
+                lh.user_id,
                 lh.login_time,
                 lh.ip_address,
                 u.email,
                 u.first_name,
                 u.last_name,
+                u.company_id AS companyId,
                 c.name AS company_name
             FROM login_history lh
             JOIN users u ON lh.user_id = u.id
@@ -589,6 +625,7 @@ app.get("/admin/orders-report", requireAdmin, async (req, res) => {
                 o.date,
                 o.poNumber,
                 o.orderedByName,
+                o.companyId,
                 c.name AS companyName
             FROM orders o
             JOIN companies c ON o.companyId = c.id
@@ -635,6 +672,7 @@ app.get("/admin/order-details/:orderId", requireAdmin, async (req, res) => {
             items: order.items, // Already parsed as JSON by mysql2 driver
             date: order.date,
             orderedByName: order.orderedByName,
+            orderedByEmail: order.orderedByEmail,
             orderedByPhone: order.orderedByPhone,
             billingAddress: order.billingAddress,
             shippingAddress: order.shippingAddress,
@@ -669,7 +707,6 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
                 u.first_name,
                 u.last_name,
                 u.email,
-
                 u.created_at,
                 c.name AS companyName
             FROM users u
@@ -1739,7 +1776,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             <img src="https://www.chicagostainless.com/graphics/stamps/rush.png" alt="RUSH" style="max-width: 170px; height: auto; display: block; opacity: 0.5;">
         </div>
     `;
-    const rushImageHtml = isRush ? rushImageHtmlContent : ''; // Only show if it's a rush order
+    const rushImageHtml = isRush ? rushImageHtmlContent : ''; 
     */
     const rushImageHtml = ''; // Set to empty string to disable the rush image. The 'isRush' constant is still used for highlighting the 'Ship Via' text.
 
