@@ -1835,7 +1835,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
     } /*else if (shippingMethodLower.includes("ups")) {
-        thirdPartyCountryHtml = `<p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_country}</p>`;
+        carrierLogoHtml = `<img src="${carrierLogoBaseUrl}ups.png" alt="UPS" style="${carrierLogoStyle}">`;
     }*/ else if (shippingMethodLower.includes("dhl")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}dhl.png" alt="DHL" style="${carrierLogoStyle}">`;
     }
