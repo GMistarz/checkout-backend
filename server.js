@@ -45,6 +45,9 @@ const PORT = process.env.PORT || 3000;
 // Log the port being used
 console.log(`Application will attempt to listen on port: ${PORT}`);
 
+// FIX: Define API_URL globally in the backend for generating redirect links
+const API_URL = process.env.API_URL || "https://checkout-backend-jvyx.onrender.com";
+
 
 // Separate database configuration for direct MySQL2 connections
 const dbConnectionConfig = {
@@ -265,7 +268,6 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         transporter.sendMail(mailOptions, (error, info) => {
             if (error) {
                 console.error("Error sending order notification email:", error);
-
 
             } else {
                 console.log("Order notification email sent:", info.response);
@@ -534,7 +536,8 @@ app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
 
         // Return a redirect URL that includes the token/key
         // This is the URL the Admin's browser will navigate to first.
-        const redirectUrl = `${API_URL}/login-via-token/${token}`; // Use full API URL here for cross-origin navigation
+        // It points to the new public token exchange route.
+        const redirectUrl = `${API_URL}/login-via-token/${token}`; 
 
         console.log(`[GET /admin/impersonate] Redirect link generated: ${redirectUrl}`);
         // IMPORTANT: Returning a 200 OK with the URL, so the frontend can open a new window.
@@ -553,9 +556,9 @@ app.get("/login-via-token/:token", async (req, res) => {
     const { token } = req.params;
     console.log(`[GET /login-via-token] Received token via URL: ${token}`);
 
+    // Ensure the token is in the expected placeholder format
     if (!token || !token.startsWith("IMPERSONATION_TOKEN_FOR_")) {
         console.warn("[Login Via Token] Invalid or missing token format.");
-        // Use send() instead of json() for this error, as it's a redirect route
         return res.status(401).send("Invalid impersonation link.");
     }
 
@@ -591,11 +594,22 @@ app.get("/login-via-token/:token", async (req, res) => {
             phone: user.phone
         };
 
+        // NOTE: The session is saved to the store before the redirect.
+        // We ensure the session is saved before redirecting to avoid race conditions.
+        await new Promise((resolve, reject) => {
+            req.session.save((err) => {
+                if (err) {
+                    console.error("[Login Via Token] Error saving session:", err);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
         console.log(`[Login Via Token] Session successfully established for user ID ${userId}. Redirecting.`);
         
         // This is the CRITICAL step: Redirect the browser back to the clean portal URL.
-        // The session cookie set above will now be used by the browser for this navigation.
-        // Using res.redirect ensures the session cookie is correctly handled.
         res.redirect(`/customer-portal.html`);
 
     } catch (err) {
@@ -614,6 +628,7 @@ app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
+
         const [history] = await conn.execute(
             "SELECT login_time, ip_address FROM login_history WHERE user_id = ? ORDER BY login_time DESC",
             [userId]
@@ -1820,7 +1835,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
     if (shippingMethodLower.includes("fedex")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}fedex.png" alt="FedEx" style="${carrierLogoStyle}">`;
     } /*else if (shippingMethodLower.includes("ups")) {
-        carrierLogoHtml = `<img src="${carrierLogoBaseUrl}ups.png" alt="UPS" style="${carrierLogoStyle}">`;
+        thirdPartyCountryHtml = `<p style="margin: 0; font-size: 12px; line-height: 1.4;">${thirdParty.third_party_country}</p>`;
     }*/ else if (shippingMethodLower.includes("dhl")) {
         carrierLogoHtml = `<img src="${carrierLogoBaseUrl}dhl.png" alt="DHL" style="${carrierLogoStyle}">`;
     }
@@ -2196,6 +2211,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             await conn.rollback();
         }
         // Log the full error object for detailed debugging on the backend server
+
         console.error("Error submitting order (Backend):", err);
         res.status(500).json({ error: err.message || "Failed to submit order due to server error." });
     } finally {
