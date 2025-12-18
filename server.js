@@ -2060,8 +2060,15 @@ app.post("/submit-order", requireAuth, async (req, res) => {
     console.log("submit-order: Received thirdPartyDetails:", JSON.stringify(thirdPartyDetails, null, 2));
 
 
-    if (!orderedByEmail || !orderedByPhone || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
-        console.error("Validation Error: Missing required order fields or empty cart.", { orderedByEmail, orderedByPhone, poNumber, billingAddress, shippingAddress, shippingMethod, items });
+    if (!orderedByEmail || !poNumber || !billingAddress || !shippingAddress || !shippingMethod || !items || items.length === 0) {
+        console.error("Validation Error: Missing fields.", { 
+            email: !!orderedByEmail, 
+            po: !!poNumber, 
+            bill: !!billingAddress, 
+            ship: !!shippingAddress, 
+            method: !!shippingMethod, 
+            cartSize: items ? items.length : 0 
+        });
         return res.status(400).json({ error: "Missing required order fields or empty cart." });
     }
 
