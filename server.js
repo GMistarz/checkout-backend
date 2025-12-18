@@ -1778,6 +1778,13 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
 
     // Helper function to generate HTML for the order email
     function generateOrderHtmlEmail(orderData) {
+     let totalQuantity = 0;
+     let totalPrice = 0;
+
+     orderData.items.forEach(item => {
+        totalQuantity += Number(item.quantity);
+        totalPrice += Number(item.lineTotal);
+     });
      // NEW: Format the current date and time
      const currentDate = new Date().toLocaleString('en-US', {
         year: 'numeric',
