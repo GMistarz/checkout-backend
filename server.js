@@ -718,6 +718,7 @@ app.get("/admin/orders-report", requireAdmin, async (req, res) => {
                 o.poNumber,
                 o.orderedByName,
                 o.companyId,
+                o.items,
                 c.name AS companyName
             FROM orders o
             JOIN companies c ON o.companyId = c.id
