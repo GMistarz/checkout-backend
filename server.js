@@ -1063,7 +1063,7 @@ app.post("/logout", (req, res) => {
 
 // MODIFIED: /register-company endpoint
 app.post("/register-company", async (req, res) => {
-  const { name, address1, ap_email, city, state, zip, country, terms, logo, discount } = req.body; // Added ap_email
+  const { name, address1, ap_email, website, city, state, zip, country, terms, logo, discount } = req.body; // Added ap_email
   console.log(`[POST /register-company] Attempting to register company: ${name}`);
   if (!name || !address1 || !ap_email || !city || !state || !zip) { // Added ap_email to validation
     console.warn("[POST /register-company] Missing required fields for company registration.");
@@ -1073,9 +1073,9 @@ app.post("/register-company", async (req, res) => {
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
-      `INSERT INTO companies (name, logo, address1, ap_email, city, state, zip, country, terms, discount, notes, approved, denied)
+      `INSERT INTO companies (name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
-      [name, logo || '', address1, ap_email, city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
+      [name, logo || '', address1, ap_email, website || '', city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
     res.status(201).json({ message: "Company registered successfully", companyId: result.insertId, id: result.insertId });
@@ -1242,7 +1242,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
+    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
     console.log(`[GET /companies] Found ${companies.length} companies.`);
     res.json(companies);
   } catch (err) {
@@ -1255,7 +1255,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // MODIFIED: /edit-company endpoint
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, ap_email, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body; // Added ap_email
+  const { id, name, address1, ap_email, website, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body; // Added ap_email
   console.log(`[POST /edit-company] Editing company ID: ${id}`);
   if (!id) {
     console.warn("[POST /edit-company] Company ID is required for update.");
@@ -1276,6 +1276,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
     if (name !== undefined) { fieldsToUpdate.push("name = ?"); values.push(name); }
     if (address1 !== undefined) { fieldsToUpdate.push("address1 = ?"); values.push(address1); }
     if (ap_email !== undefined) { fieldsToUpdate.push("ap_email = ?"); values.push(ap_email); } // Added ap_email
+    if (website !== undefined) { fieldsToUpdate.push("website = ?"); values.push(website); }
     if (city !== undefined) { fieldsToUpdate.push("city = ?"); values.push(city); }
     if (state !== undefined) { fieldsToUpdate.push("state = ?"); values.push(state); }
     if (zip !== undefined) { fieldsToUpdate.push("zip = ?"); values.push(zip); }
@@ -2431,6 +2432,7 @@ async function initializeDatabase() {
                 logo VARCHAR(255),
                 address1 TEXT,
                 ap_email VARCHAR(255),
+                website VARCHAR(255),
                 city VARCHAR(255),
                 state VARCHAR(255),
                 zip VARCHAR(20),
@@ -2459,6 +2461,22 @@ async function initializeDatabase() {
             console.log("'ap_email' column added to 'companies' table.");
         } else {
             console.log("'ap_email' column already exists in 'companies' table.");
+        }
+
+        // Check if 'website' column exists in 'companies' table before adding it
+        const [websiteColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'website';
+        `, [dbConnectionConfig.database]);
+
+        if (websiteColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE companies ADD COLUMN website VARCHAR(255) AFTER ap_email;
+            `);
+            console.log("'website' column added to 'companies' table.");
+        } else {
+            console.log("'website' column already exists in 'companies' table.");
         }
 
         // Create 'users' table if not exists with foreign key
