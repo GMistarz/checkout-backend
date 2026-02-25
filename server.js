@@ -1277,7 +1277,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
     await conn.execute(query, values);
 
     // Send approval email if status changed to approved
-    if (approved === true && !currentApprovedStatus) // MySQL returns 0/1, not true/false {
+    if (approved === true && !currentApprovedStatus) { // MySQL returns 0/1, not true/false
         console.log(`[POST /edit-company] Company ID ${id} approved. Attempting to send approval email.`); // NEW LOG
         await sendCompanyApprovalEmail(id);
     }
@@ -1735,12 +1735,8 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log("Email sent", info.response);
-            } else {
-                console.log("Company approval email sent:", info.response);
-                res.status(200).json({ message: "Approval email sent successfully to the user!" });
-            }
-        });
+        console.log("Company approval email sent:", info.response);
+        res.status(200).json({ message: "Approval email sent successfully to the user!" });
 
     } catch (err) {
         console.error("Error in /admin/send-approval-email:", err);
