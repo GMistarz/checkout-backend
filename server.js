@@ -143,7 +143,7 @@ app.get('/customer-portal.html', (req, res) => {
 // IMPORTANT: Reverted to use SMTP_HOST, SMTP_PORT, SMTP_SECURE as per your working servers 7-21.js
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
+    port: parseInt(process.env.SMTP_PORT, 10), // Must be a number, not a string
     secure: process.env.SMTP_SECURE === 'true', // Convert string to boolean
     auth: {
         user: process.env.EMAIL_USER,
@@ -254,7 +254,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         const recipientEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user
             to: recipientEmail,
             replyTo: orderDetails.orderedByEmail, // Set REPLY-TO to user's email
             subject: `New Website Order: #${orderId} - PO# ${orderDetails.poNumber}`,
@@ -280,14 +280,8 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
             ] : []
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending order notification email:", error);
-
-            } else {
-                console.log("Order notification email sent:", info.response);
-            }
-        });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Order notification email sent:", info.response);
     } catch (err) {
         console.error("Error fetching admin PO email or sending order notification:", err);
     } finally {
@@ -304,7 +298,7 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
         const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user
             to: recipientEmail,
             replyTo: userEmail, // Set REPLY-TO to user's email
             subject: `New Company Registration: ${companyName}`,
@@ -332,13 +326,8 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
             ] : []
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending new user registration email:", error);
-            } else {
-                console.log("New user registration email sent:", info.response);
-            }
-        });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("New user registration email sent:", info.response);
     } catch (err) {
         console.error("Error fetching admin registration email or sending registration notification:", err);
     } finally {
@@ -355,7 +344,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
         const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`,
             to: recipientEmail,
             replyTo: userEmail,
             subject: `New User Registration for Existing Company: ${companyName}`,
@@ -373,13 +362,8 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending existing company user registration email:", error);
-            } else {
-                console.log("Existing company user registration email sent:", info.response);
-            }
-        });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Existing company user registration email sent:", info.response);
     } catch (err) {
         console.error("Error fetching admin registration email or sending existing company user notification:", err);
     } finally {
@@ -391,7 +375,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
 async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
     try {
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`,
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: `Welcome to Chicago Stainless Equipment!`,
@@ -405,13 +389,8 @@ async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending welcome email to new user:", error);
-            } else {
-                console.log(`Welcome email sent to new user ${userEmail}:`, info.response);
-            }
-        });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Email sent", info.response);
     } catch (err) {
         console.error("Error preparing welcome email for new user:", err);
     }
@@ -441,7 +420,7 @@ async function sendCompanyApprovalEmail(companyId) {
         const userName = userRows[0].first_name;
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
             subject: `Your Company Registration for ${companyName} Has Been Approved!`,
@@ -455,13 +434,8 @@ async function sendCompanyApprovalEmail(companyId) {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending company approval email:", error);
-            } else {
-                console.log(`Company approval email sent to ${userEmail}:`, info.response);
-            }
-        });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Email sent", info.response);
     } catch (err) {
         console.error("Error sending company approval email:", err);
     } finally {
@@ -1074,7 +1048,7 @@ app.post("/register-company", async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
       `INSERT INTO companies (name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
       [name, logo || '', address1, ap_email, website || '', city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
@@ -1303,7 +1277,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
     await conn.execute(query, values);
 
     // Send approval email if status changed to approved
-    if (approved === true && currentApprovedStatus === false) {
+    if (approved === true && !currentApprovedStatus) // MySQL returns 0/1, not true/false {
         console.log(`[POST /edit-company] Company ID ${id} approved. Attempting to send approval email.`); // NEW LOG
         await sendCompanyApprovalEmail(id);
     }
@@ -1743,7 +1717,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         }
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user // Changed to use the desired FROM address
 
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
@@ -1760,10 +1734,8 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending company approval email:", error);
-                return res.status(500).json({ error: "Failed to send approval email." });
+        const info = await transporter.sendMail(mailOptions);
+        console.log("Email sent", info.response);
             } else {
                 console.log("Company approval email sent:", info.response);
                 res.status(200).json({ message: "Approval email sent successfully to the user!" });
@@ -2164,7 +2136,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
         const adminMailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user // Changed to use the desired FROM address
 
             to: poEmailRecipient, // Email will be sent to the configured PO email address
             replyTo: orderedByEmail, // Set REPLY-TO to the user's email from the checkout page
@@ -2189,17 +2161,15 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             ] : []
         };
 
-        transporter.sendMail(adminMailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending admin order notification email:", error);
-            } else {
-                console.log("Admin order notification email sent:", info.response);
-            }
+        transporter.sendMail(adminMailOptions).then(info => {
+            console.log("Admin order notification email sent:", info.response);
+        }).catch(err => {
+            console.error("Error sending admin order notification email:", err);
         });
 
         // NEW: Send confirmation email to the user
         const userConfirmationMailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: `"Chicago Stainless Equipment" <${process.env.EMAIL_USER}>`, // Must match authenticated SMTP user
             to: orderedByEmail,
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: "Thank You For Placing Your Order With Chicago Stainless Equipment",
@@ -2227,12 +2197,10 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             ] : []
         };
 
-        transporter.sendMail(userConfirmationMailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending user confirmation email:", error);
-            } else {
-                console.log("User confirmation email sent:", info.response);
-            }
+        transporter.sendMail(userConfirmationMailOptions).then(info => {
+            console.log("User confirmation email sent:", info.response);
+        }).catch(err => {
+            console.error("Error sending user confirmation email:", err);
         });
 
 
