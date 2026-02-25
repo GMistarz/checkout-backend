@@ -1074,7 +1074,7 @@ app.post("/register-company", async (req, res) => {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(
       `INSERT INTO companies (name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)`, // Added ap_email column
       [name, logo || '', address1, ap_email, website || '', city, state, zip, country, terms || 'Net 30', discount || 0, ''] // Added ap_email value
     );
     console.log(`[POST /register-company] Company ${name} registered with ID: ${result.insertId}`);
