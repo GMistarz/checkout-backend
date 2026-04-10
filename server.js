@@ -263,8 +263,9 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${orderDetails.poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
@@ -310,8 +311,9 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
             attachments: pdfBuffer ? [
                 {
                     filename: `Cart_Registration_${companyName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
@@ -2151,8 +2153,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
@@ -2185,8 +2188,9 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
