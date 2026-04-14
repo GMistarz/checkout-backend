@@ -17,13 +17,13 @@
     "express": "^5.1.0",
     "express-mysql-session": "^3.0.3",
     "express-session": "^1.18.1",
+    "mailtrap": "^3.3.0",
     "mysql2": "^3.14.1",
     "pdf-lib": "^1.17.1",
     "puppeteer": "^24.12.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "uuid": "^9.0.0",
-    "@sendgrid/mail": "^8.1.3"
+    "uuid": "^9.0.0"
   },
   "description": ""
 }
