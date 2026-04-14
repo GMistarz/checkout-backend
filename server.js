@@ -5,7 +5,7 @@ const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
-const sgMail = require("@sendgrid/mail");
+const MailtrapClient = require("mailtrap").MailtrapClient;
 const os = require('os'); // NEW: Import os module
 const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp directory names
 const fs = require('fs/promises'); // NEW: For async file system operations
@@ -142,9 +142,29 @@ app.get('/customer-portal.html', (req, res) => {
 
 
 // --- SendGrid Configuration ---
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const mailtrap = new MailtrapClient({ token: process.env.MAILTRAP_API_KEY });
 const EMAIL_FROM = 'orderdesk@chicagostainless.com';
-console.log(`SendGrid Config: API key loaded, From=${EMAIL_FROM}`);
+console.log(`Mailtrap Config: API key loaded, From=${EMAIL_FROM}`);
+
+// Helper to convert nodemailer-style options to Mailtrap format
+function toMailtrapOptions(opts) {
+    const msg = {
+        from: { email: typeof opts.from === 'string' ? opts.from : opts.from.email, name: 'Chicago Stainless Equipment' },
+        to: Array.isArray(opts.to) ? opts.to.map(e => ({ email: e })) : [{ email: opts.to }],
+        subject: opts.subject,
+        html: opts.html,
+    };
+    if (opts.replyTo) msg.reply_to = { email: opts.replyTo };
+    if (opts.attachments && opts.attachments.length > 0) {
+        msg.attachments = opts.attachments.map(a => ({
+            filename: a.filename,
+            content: a.content,
+            type: a.type || 'application/pdf',
+            disposition: a.disposition || 'attachment'
+        }));
+    }
+    return msg;
+}
 
 // --- NEW: Excluded Emails for Login History Logging ---
 const EXCLUDED_LOGGING_EMAILS = [
@@ -270,7 +290,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
             ] : []
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("Order notification email sent:"); })
             .catch(error => { console.error("Error sending order notification email::", error.message); });
     } catch (err) {
@@ -318,7 +338,7 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
             ] : []
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("New user registration email sent:"); })
             .catch(error => { console.error("Error sending new user registration email::", error.message); });
     } catch (err) {
@@ -355,7 +375,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
             `,
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("Existing company user registration email sent:"); })
             .catch(error => { console.error("Error sending existing company user registration email::", error.message); });
     } catch (err) {
@@ -383,7 +403,7 @@ async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
             `,
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log(`Welcome email sent to new user ${userEmail}.`); })
             .catch(error => { console.error("Error sending welcome email to new user:", error.message); });
     } catch (err) {
@@ -429,7 +449,7 @@ async function sendCompanyApprovalEmail(companyId) {
             `,
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log(`Company approval email sent to ${userEmail}.`); })
             .catch(error => { console.error("Error sending company approval email:", error.message); });
     } catch (err) {
@@ -1707,8 +1727,8 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         const userEmail = userRows[0].email;
         const userName = userRows[0].first_name;
 
-        if (!process.env.SENDGRID_API_KEY) {
-            console.error("SENDGRID_API_KEY environment variable is not set. Cannot send email.");
+        if (!process.env.MAILTRAP_API_KEY) {
+            console.error("MAILTRAP_API_KEY environment variable is not set. Cannot send email.");
             return res.status(500).json({ error: "Email sender not configured on server." });
         }
 
@@ -1730,7 +1750,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             `,
         };
 
-        sgMail.send(mailOptions)
+        mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => {
                 console.log("Company approval email sent.");
                 res.status(200).json({ message: "Approval email sent successfully to the user!" });
@@ -2160,7 +2180,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             ] : []
         };
 
-        sgMail.send(adminMailOptions)
+        mailtrap.send(toMailtrapOptions(adminMailOptions))
             .then(() => { console.log("Admin order notification email sent:"); })
             .catch(error => { console.error("Error sending admin order notification email::", error.message); });
 
@@ -2195,7 +2215,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             ] : []
         };
 
-        sgMail.send(userConfirmationMailOptions)
+        mailtrap.send(toMailtrapOptions(userConfirmationMailOptions))
             .then(() => { console.log("User confirmation email sent:"); })
             .catch(error => { console.error("Error sending user confirmation email::", error.message); });
 
