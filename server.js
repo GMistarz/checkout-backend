@@ -94,11 +94,19 @@ const sessionStoreOptions = {
   checkExpirationInterval: 900000, // 15 minutes
   expiration: 86400000,            // 24 hours
   createDatabaseTable: true,       // Whether to create the 'sessions' table
-  connectionLimit: 1               // Limit connections for the session store
+  connectionLimit: 5,              // Allow a small pool for resilience
+  acquireTimeout: 10000,           // 10 second timeout to acquire a connection
+  waitForConnections: true,
+  endConnectionOnClose: true
 };
 
 // NEW: Configure the session store instance
 const sessionStore = new MySQLStore(sessionStoreOptions);
+
+// Handle session store errors gracefully so they don't crash the server
+sessionStore.on('error', function(err) {
+    console.error('Session store error (non-fatal):', err.code || err.message);
+});
 
 
 // --- CORS Configuration (MODIFIED to handle dynamic origin for credentials) ---
