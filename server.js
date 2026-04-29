@@ -5,11 +5,13 @@ const session = require("express-session");
 const bcrypt = require("bcrypt");
 const mysql = require("mysql2/promise"); // Ensure you're using the promise version
 const path = require("path");
-const nodemailer = require("nodemailer");
+const crypto = require("crypto"); // For secure token generation
+const MailtrapClient = require("mailtrap").MailtrapClient;
 const os = require('os'); // NEW: Import os module
 const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp directory names
 const fs = require('fs/promises'); // NEW: For async file system operations
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const rateLimit = require("express-rate-limit"); // For brute-force protection
 
 // NEW: Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
@@ -19,6 +21,18 @@ const chromium = require('@sparticuz/chromium');
 
 // Apply the stealth plugin to puppeteer
 puppeteer.use(StealthPlugin());
+
+// --- Secure impersonation token store (in-memory, short-lived, single-use) ---
+// Maps token -> { userId, expires }
+const impersonationTokens = new Map();
+const IMPERSONATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
+// Purge expired tokens every 5 minutes to prevent unbounded memory growth
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, data] of impersonationTokens) {
+        if (data.expires < now) impersonationTokens.delete(token);
+    }
+}, 5 * 60 * 1000);
 
 // Add this very early log to confirm server startup and logging
 console.log("Server is starting...");
@@ -34,6 +48,12 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('UNHANDLED REJECTION at:', promise, 'reason:', reason);
   // Log unhandled promise rejections.
 });
+
+// SECURITY: Fail fast if critical secrets are missing
+if (!process.env.SESSION_SECRET) {
+    console.error("FATAL: SESSION_SECRET environment variable is not set. Refusing to start.");
+    process.exit(1);
+}
 
 // NEW: Import the MySQL session store
 const MySQLStore = require('express-mysql-session')(session);
@@ -54,11 +74,13 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://checkout-frontend.onre
 
 
 // Separate database configuration for direct MySQL2 connections
+// SECURITY FIX: All credentials now loaded from environment variables.
+// Required .env variables: DB_HOST, DB_USER, DB_PASS, DB_NAME
 const dbConnectionConfig = {
-  host: process.env.DB_HOST, // Was host: "192.254.232.38",
-  user: "gmistarz_cse",
-  password: "Csec@1280",
-  database: "gmistarz_cse",
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
   connectTimeout: 10000 // Add a 10-second connection timeout (10000 ms)
 };
 
@@ -85,24 +107,28 @@ const allowedOrigins = [
   "http://localhost:3000", // For local development
   "https://checkout-frontend.onrender.com", // Your Render frontend URL
   "https://www.chicagostainless.com", // Your production domain
-  "https://2o7myf7j5pj32q9x8ip2u5h5qlghtdamz9t44ucn4mlv3r76zx-h775241406.scf.usercontent.goog" // Example SCF URL
+  // REMOVED: Temporary Google Cloud Shell URL — never leave dev/debug origins in production
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    // SECURITY: Requests with no Origin header are only allowed from the same host (server-rendered pages).
+    // This restricts unauthenticated curl/server-to-server calls from bypassing CORS silently.
+    if (!origin) {
+      // Allow only if running in development mode; block in production
+      if (process.env.NODE_ENV !== 'production') return callback(null, true);
+      return callback(new Error("CORS: Requests with no Origin are not allowed in production"), false);
+    }
     if (allowedOrigins.indexOf(origin) === -1) {
       const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
       console.warn(msg); // Log disallowed origins
       return callback(new Error(msg), false);
     }
-    console.log(`CORS allowed origin: ${origin}`); // Log allowed origins
     return callback(null, true);
   },
   credentials: true, // IMPORTANT: Allows cookies/sessions to be sent
   optionsSuccessStatus: 200,
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 };
 
@@ -113,7 +139,7 @@ app.use(express.json());
 app.set("trust proxy", 1); // Essential for 'secure: true' cookies when behind a proxy/load balancer like Render
 
 app.use(session({
-  secret: process.env.SESSION_SECRET || "supersecretkey", // Use environment variable for secret
+  secret: process.env.SESSION_SECRET, // Must be set as an environment variable — no hardcoded fallback
   resave: false,
   saveUninitialized: false,
   store: sessionStore, // <-- THIS IS THE CRUCIAL CHANGE for persistent sessions
@@ -127,35 +153,99 @@ app.use(session({
 // Serve static files from 'public' directory
 app.use(express.static("public"));
 
+// --- Rate Limiters ---
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,                   // max 20 attempts per window per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts. Please try again in 15 minutes." }
+});
+
+// --- HTML Escape Helper (prevents HTML injection in admin emails) ---
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// --- CSRF Protection ---
+// Generates a CSRF token for the session on first request, validates it on mutating requests.
+function generateCsrfToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+const csrfProtection = (req, res, next) => {
+    // Skip CSRF for GET/HEAD/OPTIONS (safe methods)
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    // Skip CSRF for the login and registration routes (user has no token yet)
+    const csrfExemptPaths = ['/login', '/admin-login', '/register-company', '/register-user', '/company-by-name'];
+    if (csrfExemptPaths.some(p => req.path.startsWith(p))) return next();
+
+    const sessionToken = req.session.csrfToken;
+    const headerToken = req.headers['x-csrf-token'];
+    if (!sessionToken || !headerToken || sessionToken !== headerToken) {
+        console.warn(`[CSRF] Token mismatch for ${req.method} ${req.path}. IP: ${req.ip}`);
+        return res.status(403).json({ error: "Invalid or missing CSRF token." });
+    }
+    next();
+};
+app.use(csrfProtection);
+
+// Endpoint for the frontend to fetch its CSRF token
+app.get('/csrf-token', (req, res) => {
+    if (!req.session.csrfToken) {
+        req.session.csrfToken = generateCsrfToken();
+    }
+    res.json({ csrfToken: req.session.csrfToken });
+});
+
 // --- FIX: Fallback Routes for HTML Files ---
-// If files are in the root directory instead of 'public', these routes serve them directly.
+// Admin pages require a verified admin session at the route level.
 app.get('/admin-dashboard.html', (req, res) => {
+    if (!req.session.user || req.session.user.role !== 'admin') {
+        return res.status(403).send("Forbidden: Admin access required.");
+    }
     res.sendFile(path.join(__dirname, 'admin-dashboard.html'));
 });
 
 app.get('/customer-portal.html', (req, res) => {
+    if (!req.session.user) {
+        return res.status(401).send("Unauthorized: Login required.");
+    }
     res.sendFile(path.join(__dirname, 'customer-portal.html'));
 });
 // -------------------------------------------
 
 
-// --- Nodemailer Transporter Configuration ---
-// IMPORTANT: Reverted to use SMTP_HOST, SMTP_PORT, SMTP_SECURE as per your working servers 7-21.js
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: process.env.SMTP_SECURE === 'true', // Convert string to boolean
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        rejectUnauthorized: false // Do not fail on invalid certs
-    }
-});
+// --- SendGrid Configuration ---
+const mailtrap = new MailtrapClient({ token: process.env.MAILTRAP_API_KEY });
+const EMAIL_FROM = 'orderdesk@chicagostainless.com';
+console.log(`Mailtrap Config: API key loaded, From=${EMAIL_FROM}`);
 
-// NEW: Log Nodemailer configuration details (excluding password for security)
-console.log(`Nodemailer Config: Host=${process.env.SMTP_HOST}, Port=${process.env.SMTP_PORT}, Secure=${process.env.SMTP_SECURE}, User=${process.env.EMAIL_USER}`);
+// Helper to convert nodemailer-style options to Mailtrap format
+function toMailtrapOptions(opts) {
+    const msg = {
+        from: { email: typeof opts.from === 'string' ? opts.from : opts.from.email, name: 'Chicago Stainless Equipment' },
+        to: Array.isArray(opts.to) ? opts.to.map(e => ({ email: e })) : [{ email: opts.to }],
+        subject: opts.subject,
+        html: opts.html,
+    };
+    if (opts.replyTo) msg.reply_to = { email: opts.replyTo };
+    if (opts.attachments && opts.attachments.length > 0) {
+        msg.attachments = opts.attachments.map(a => ({
+            filename: a.filename,
+            content: a.content,
+            type: a.type || 'application/pdf',
+            disposition: a.disposition || 'attachment'
+        }));
+    }
+    return msg;
+}
 
 // --- NEW: Excluded Emails for Login History Logging ---
 const EXCLUDED_LOGGING_EMAILS = [
@@ -254,40 +344,36 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         const recipientEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: EMAIL_FROM, // Changed FROM address
             to: recipientEmail,
             replyTo: orderDetails.orderedByEmail, // Set REPLY-TO to user's email
-            subject: `New Website Order: #${orderId} - PO# ${orderDetails.poNumber}`,
+            subject: `New Website Order: #${orderId} - PO# ${escapeHtml(orderDetails.poNumber)}`,
             html: `
                 <p>Dear Administrator,</p>
                 <p>A new order has been submitted on the website.</p>
-                <p><strong>Order ID:</strong> ${orderId}</p>
-                <p><strong>PO Number:</strong> ${orderDetails.poNumber}</p>
-                <p><strong>Ordered By:</strong> ${orderDetails.orderedBy}</p>
-                <p><strong>Billing Address:</strong><br>${orderDetails.billingAddress.replace(/\n/g, '<br>')}</p>
-                <p><strong>Shipping Address:</strong><br>${orderDetails.shippingAddress.replace(/\n/g, '<br>')}</p>
-                <p><strong>Shipping Method:</strong> ${orderDetails.shippingMethod}</p>
-                ${orderDetails.carrierAccount ? `<p><strong>Carrier Account #:</strong> ${orderDetails.carrierAccount}</p>` : ''}
+                <p><strong>Order ID:</strong> ${escapeHtml(String(orderId))}</p>
+                <p><strong>PO Number:</strong> ${escapeHtml(orderDetails.poNumber)}</p>
+                <p><strong>Ordered By:</strong> ${escapeHtml(orderDetails.orderedBy)}</p>
+                <p><strong>Billing Address:</strong><br>${escapeHtml(orderDetails.billingAddress).replace(/\n/g, '<br>')}</p>
+                <p><strong>Shipping Address:</strong><br>${escapeHtml(orderDetails.shippingAddress).replace(/\n/g, '<br>')}</p>
+                <p><strong>Shipping Method:</strong> ${escapeHtml(orderDetails.shippingMethod)}</p>
+                ${orderDetails.carrierAccount ? `<p><strong>Carrier Account #:</strong> ${escapeHtml(orderDetails.carrierAccount)}</p>` : ''}
                 <p>The full order information is attached as a PDF.</p>
                 <p>Thank you.</p>
             `,
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${orderDetails.poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending order notification email:", error);
-
-            } else {
-                console.log("Order notification email sent:", info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => { console.log("Order notification email sent:"); })
+            .catch(error => { console.error("Error sending order notification email::", error.message); });
     } catch (err) {
         console.error("Error fetching admin PO email or sending order notification:", err);
     } finally {
@@ -304,20 +390,20 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
         const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: EMAIL_FROM, // Changed FROM address
             to: recipientEmail,
             replyTo: userEmail, // Set REPLY-TO to user's email
-            subject: `New Company Registration: ${companyName}`,
+            subject: `New Company Registration: ${escapeHtml(companyName)}`,
             html: `
                 <p>Hello Admin,</p>
                 <p>A new user has registered through the checkout page:</p>
                 <ul>
-                    <li><strong>Company:</strong> ${companyName} (ID: ${companyId})</li>
-                    <li><strong>Name:</strong> ${firstName} ${lastName}</li>
-                    <li><strong>Email:</strong> ${userEmail}</li>
-                    <li><strong>A/P Email:</strong> ${apEmail || 'N/A'}</li>
-                    <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
-                    <li><strong>Role:</strong> ${role}</li>
+                    <li><strong>Company:</strong> ${escapeHtml(companyName)} (ID: ${escapeHtml(String(companyId))})</li>
+                    <li><strong>Name:</strong> ${escapeHtml(firstName)} ${escapeHtml(lastName)}</li>
+                    <li><strong>Email:</strong> ${escapeHtml(userEmail)}</li>
+                    <li><strong>A/P Email:</strong> ${escapeHtml(apEmail) || 'N/A'}</li>
+                    <li><strong>Phone:</strong> ${escapeHtml(phone) || 'N/A'}</li>
+                    <li><strong>Role:</strong> ${escapeHtml(role)}</li>
                 </ul>
                 <p>Please log into the admin dashboard to review and approve the company.</p>
                 ${pdfBuffer ? '<p>The contents of the user\'s shopping cart at the time of registration is attached as a PDF.</p>' : ''}
@@ -326,19 +412,16 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
             attachments: pdfBuffer ? [
                 {
                     filename: `Cart_Registration_${companyName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending new user registration email:", error);
-            } else {
-                console.log("New user registration email sent:", info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => { console.log("New user registration email sent:"); })
+            .catch(error => { console.error("Error sending new user registration email::", error.message); });
     } catch (err) {
         console.error("Error fetching admin registration email or sending registration notification:", err);
     } finally {
@@ -355,7 +438,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
         const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: EMAIL_FROM,
             to: recipientEmail,
             replyTo: userEmail,
             subject: `New User Registration for Existing Company: ${companyName}`,
@@ -373,13 +456,9 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending existing company user registration email:", error);
-            } else {
-                console.log("Existing company user registration email sent:", info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => { console.log("Existing company user registration email sent:"); })
+            .catch(error => { console.error("Error sending existing company user registration email::", error.message); });
     } catch (err) {
         console.error("Error fetching admin registration email or sending existing company user notification:", err);
     } finally {
@@ -391,7 +470,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
 async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
     try {
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: EMAIL_FROM,
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: `Welcome to Chicago Stainless Equipment!`,
@@ -405,13 +484,9 @@ async function sendWelcomeEmailToNewUser(userEmail, firstName, companyName) {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending welcome email to new user:", error);
-            } else {
-                console.log(`Welcome email sent to new user ${userEmail}:`, info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => { console.log(`Welcome email sent to new user ${userEmail}.`); })
+            .catch(error => { console.error("Error sending welcome email to new user:", error.message); });
     } catch (err) {
         console.error("Error preparing welcome email for new user:", err);
     }
@@ -441,7 +516,7 @@ async function sendCompanyApprovalEmail(companyId) {
         const userName = userRows[0].first_name;
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed FROM address
+            from: EMAIL_FROM, // Changed FROM address
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
             subject: `Your Company Registration for ${companyName} Has Been Approved!`,
@@ -455,13 +530,9 @@ async function sendCompanyApprovalEmail(companyId) {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending company approval email:", error);
-            } else {
-                console.log(`Company approval email sent to ${userEmail}:`, info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => { console.log(`Company approval email sent to ${userEmail}.`); })
+            .catch(error => { console.error("Error sending company approval email:", error.message); });
     } catch (err) {
         console.error("Error sending company approval email:", err);
     } finally {
@@ -471,17 +542,15 @@ async function sendCompanyApprovalEmail(companyId) {
 // --- Authentication Routes ---
 
 // NEW: Admin Login Route
-app.post("/admin-login", async (req, res) => {
+app.post("/admin-login", loginLimiter, async (req, res) => {
     const { email, password } = req.body;
     let conn;
-    console.log(`[Admin Login Route] Attempting login for email: ${email}`);
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, password, company_id FROM users WHERE email = ? AND role = 'admin'", [email]);
         const user = users[0];
 
         if (!user || !(await bcrypt.compare(password, user.password))) {
-            console.log("[Admin Login Route] Invalid credentials or not an admin.");
             return res.status(401).json({ error: "Invalid credentials or not authorized as admin" });
         }
 
@@ -494,23 +563,20 @@ app.post("/admin-login", async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
+        // Assign a new CSRF token to the session on login
+        req.session.csrfToken = generateCsrfToken();
         
         // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
         const userEmailLower = user.email.toLowerCase();
         if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
-            // Record login history only if the email is not in the exclusion list
             const ip = req.ip || req.connection.remoteAddress;
             await conn.execute(
                 'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
                 [user.id, ip]
             );
-            console.log(`[Admin Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
-        } else {
-            console.log(`[Admin Login Success] Login history skipped for excluded email: ${user.email}`);
         }
         // --- END MODIFIED LOGIC ---
         
-        console.log(`[Admin Login Success] req.session.user set for admin: ${JSON.stringify(req.session.user)}`);
         res.json({ message: "Admin login successful", role: user.role });
 
     } catch (err) {
@@ -534,29 +600,26 @@ app.get("/admin/check-auth", (req, res) => {
 // MODIFIED: Impersonate Link Generation Endpoint (Admin side)
 app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
     const { userId } = req.params;
-    console.log(`[GET /admin/impersonate] Admin ${req.session.user.email} attempting to impersonate user ID: ${userId}`);
     
-    // For this demonstration, we return a placeholder token that includes the user ID
-    const token = `IMPERSONATION_TOKEN_FOR_${userId}`;
-
-    // You could also perform a quick lookup here to ensure the user exists
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [users] = await conn.execute("SELECT id FROM users WHERE id = ?", [userId]);
         if (users.length === 0) {
-            console.warn(`[GET /admin/impersonate] User ID ${userId} not found.`);
             return res.status(404).json({ error: "User not found for impersonation" });
         }
 
-        // Return a redirect URL that includes the token/key
-        // This is the URL the Admin's browser will navigate to first.
-        // It points to the new public token exchange route.
-        const redirectUrl = `${API_URL}/login-via-token/${token}`; 
+        // SECURITY FIX: Generate a cryptographically secure, single-use, short-lived token.
+        // The old approach used a predictable "IMPERSONATION_TOKEN_FOR_{userId}" string which
+        // allowed anyone to impersonate any user by guessing the token.
+        const token = crypto.randomBytes(32).toString('hex');
+        impersonationTokens.set(token, {
+            userId: parseInt(userId, 10),
+            expires: Date.now() + IMPERSONATION_TOKEN_TTL_MS
+        });
 
-        console.log(`[GET /admin/impersonate] Redirect link generated: ${redirectUrl}`);
-        // IMPORTANT: Returning a 200 OK with the URL, so the frontend can open a new window.
-        res.json({ redirectUrl: redirectUrl });
+        const redirectUrl = `${API_URL}/login-via-token/${token}`;
+        res.json({ redirectUrl });
 
     } catch (err) {
         console.error("Error during impersonation link generation:", err);
@@ -564,29 +627,34 @@ app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
     } finally {
         if (conn) conn.end();
     }
-}); 
+});
 
 // NEW: Token Exchange Route (Handles the browser redirect and sets the session)
 app.get("/login-via-token/:token", async (req, res) => {
     const { token } = req.params;
-    console.log(`[GET /login-via-token] Received token via URL: ${token}`);
 
-    // Ensure the token is in the expected placeholder format
-    if (!token || !token.startsWith("IMPERSONATION_TOKEN_FOR_")) {
-        console.warn("[Login Via Token] Invalid or missing token format.");
-        return res.status(401).send("Invalid impersonation link.");
+    // SECURITY FIX: Validate against the in-memory secure token store.
+    // Tokens are random, short-lived (15 min), and single-use.
+    const tokenData = impersonationTokens.get(token);
+
+    if (!tokenData) {
+        console.warn("[Login Via Token] Token not found or already used.");
+        return res.status(401).send("Invalid or expired impersonation link.");
+    }
+    if (tokenData.expires < Date.now()) {
+        impersonationTokens.delete(token);
+        console.warn("[Login Via Token] Token expired.");
+        return res.status(401).send("Impersonation link has expired.");
     }
 
-    const userId = parseInt(token.replace("IMPERSONATION_TOKEN_FOR_", ""), 10);
-    if (isNaN(userId)) {
-        console.warn("[Login Via Token] Invalid user ID extracted from token.");
-        return res.status(401).send("Invalid impersonation link format.");
-    }
+    // Consume the token immediately (single-use)
+    impersonationTokens.delete(token);
+
+    const userId = tokenData.userId;
 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        // Retrieve full user details needed for session setup
         const [users] = await conn.execute(
             "SELECT id, email, first_name, last_name, phone, role, company_id FROM users WHERE id = ?",
             [userId]
@@ -594,7 +662,6 @@ app.get("/login-via-token/:token", async (req, res) => {
         const user = users[0];
 
         if (!user) {
-            console.warn(`[Login Via Token] User ID ${userId} not found.`);
             return res.status(404).send("User not found.");
         }
 
@@ -608,24 +675,16 @@ app.get("/login-via-token/:token", async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
+        req.session.csrfToken = generateCsrfToken();
 
-        // NOTE: The session is saved to the store before the redirect.
-        // We ensure the session is saved before redirecting to avoid race conditions.
         await new Promise((resolve, reject) => {
             req.session.save((err) => {
-                if (err) {
-                    console.error("[Login Via Token] Error saving session:", err);
-                    reject(err);
-                } else {
-                    resolve();
-                }
+                if (err) { console.error("[Login Via Token] Error saving session:", err); reject(err); }
+                else resolve();
             });
         });
 
-        console.log(`[Login Via Token] Session successfully established for user ID ${userId}. Redirecting to Frontend.`);
-        
-        // CRITICAL FIX: Redirect to the FRONTEND_URL instead of the local backend path
-        // This ensures the user lands on the deployed frontend where customer-portal.html exists.
+        console.log(`[Login Via Token] Session established for user ID ${userId}. Redirecting to Frontend.`);
         res.redirect(`${FRONTEND_URL}/customer-portal.html`);
 
     } catch (err) {
@@ -817,22 +876,17 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
     }
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   let conn;
-  console.log(`[Login Route] Attempting login for email: ${email}`);
   try {
-    console.log("[Login Route] Attempting to create database connection...");
     conn = await mysql.createConnection(dbConnectionConfig);
-    console.log("[Login Route] Database connection established.");
 
     // MODIFIED: Explicitly select columns including 'phone' and 'password'
     const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, password, company_id FROM users WHERE email = ?", [email]);
-    console.log(`[Login Route] Query result for user ${email}:`, users);
 
     const user = users[0];
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      console.log("[Login Route] Invalid credentials.");
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
@@ -844,25 +898,21 @@ app.post("/login", async (req, res) => {
         companyId: user.company_id,
         firstName: user.first_name,
         lastName: user.last_name,
-        phone: user.phone // Include phone number here
+        phone: user.phone
     };
+    // Assign a fresh CSRF token on login
+    req.session.csrfToken = generateCsrfToken();
 
     // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
     const userEmailLower = user.email.toLowerCase();
     if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
-        // Record login history only if the email is not in the exclusion list
         const ip = req.ip || req.connection.remoteAddress;
         await conn.execute(
             'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
             [user.id, ip]
         );
-        console.log(`[Login Success] Login history recorded for user ID ${user.id} from IP ${ip}`);
-    } else {
-        console.log(`[Login Success] Login history skipped for excluded email: ${user.email}`);
     }
     // --- END MODIFIED LOGIC ---
-
-    console.log(`[Login Success] req.session.user set to: ${JSON.stringify(req.session.user)}`);
 
     res.json({ message: "Login successful", role: user.role });
 
@@ -870,10 +920,7 @@ app.post("/login", async (req, res) => {
     console.error("Login error:", err);
     res.status(500).json({ error: "Login failed due to server error" });
   } finally {
-    if (conn) {
-        conn.end();
-        console.log("[Login Route] Database connection closed.");
-    }
+    if (conn) conn.end();
   }
 });
 
@@ -943,9 +990,9 @@ app.put("/user/update-profile", requireAuth, async (req, res) => {
         fieldsToUpdate.push("phone = ?"); values.push(phone || null); // Allow phone to be null
 
         if (newPassword) {
-            if (newPassword.length < 3) {
+            if (newPassword.length < 6) {
                 console.warn("[PUT /user/update-profile] New password is too short.");
-                return res.status(400).json({ error: "New password must be at least 3 characters long." });
+                return res.status(400).json({ error: "New password must be at least 6 characters long." });
             }
             const hashedPassword = await bcrypt.hash(newPassword, 10);
             fieldsToUpdate.push("password = ?"); values.push(hashedPassword);
@@ -1737,13 +1784,13 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         const userEmail = userRows[0].email;
         const userName = userRows[0].first_name;
 
-        if (!process.env.EMAIL_USER) {
-            console.error("EMAIL_USER environment variable is not set. Cannot send email.");
+        if (!process.env.MAILTRAP_API_KEY) {
+            console.error("MAILTRAP_API_KEY environment variable is not set. Cannot send email.");
             return res.status(500).json({ error: "Email sender not configured on server." });
         }
 
         const mailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
+            from: EMAIL_FROM, // Changed to use the desired FROM address
 
             to: userEmail,
             replyTo: "OrderDesk@ChicagoStainless.com", // Replies from user should go to OrderDesk
@@ -1760,15 +1807,15 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             `,
         };
 
-        transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending company approval email:", error);
-                return res.status(500).json({ error: "Failed to send approval email." });
-            } else {
-                console.log("Company approval email sent:", info.response);
+        mailtrap.send(toMailtrapOptions(mailOptions))
+            .then(() => {
+                console.log("Company approval email sent.");
                 res.status(200).json({ message: "Approval email sent successfully to the user!" });
-            }
-        });
+            })
+            .catch(error => {
+                console.error("Error sending company approval email:", error.message);
+                res.status(500).json({ error: "Failed to send approval email." });
+            });
 
     } catch (err) {
         console.error("Error in /admin/send-approval-email:", err);
@@ -2164,7 +2211,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
         const adminMailOptions = {
-            from: "OrderDesk@ChicagoStainless.com", // Changed to use the desired FROM address
+            from: EMAIL_FROM, // Changed to use the desired FROM address
 
             to: poEmailRecipient, // Email will be sent to the configured PO email address
             replyTo: orderedByEmail, // Set REPLY-TO to the user's email from the checkout page
@@ -2183,23 +2230,20 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
 
-        transporter.sendMail(adminMailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending admin order notification email:", error);
-            } else {
-                console.log("Admin order notification email sent:", info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(adminMailOptions))
+            .then(() => { console.log("Admin order notification email sent:"); })
+            .catch(error => { console.error("Error sending admin order notification email::", error.message); });
 
         // NEW: Send confirmation email to the user
         const userConfirmationMailOptions = {
-            from: "OrderDesk@ChicagoStainless.com",
+            from: EMAIL_FROM,
             to: orderedByEmail,
             replyTo: "OrderDesk@ChicagoStainless.com",
             subject: "Thank You For Placing Your Order With Chicago Stainless Equipment",
@@ -2221,19 +2265,16 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             attachments: pdfBuffer ? [
                 {
                     filename: `Order_${orderId}_${poNumber}.pdf`,
-                    content: pdfBuffer,
-                    contentType: 'application/pdf'
+                    content: pdfBuffer.toString('base64'),
+                    type: 'application/pdf',
+                    disposition: 'attachment'
                 }
             ] : []
         };
 
-        transporter.sendMail(userConfirmationMailOptions, (error, info) => {
-            if (error) {
-                console.error("Error sending user confirmation email:", error);
-            } else {
-                console.log("User confirmation email sent:", info.response);
-            }
-        });
+        mailtrap.send(toMailtrapOptions(userConfirmationMailOptions))
+            .then(() => { console.log("User confirmation email sent:"); })
+            .catch(error => { console.error("Error sending user confirmation email::", error.message); });
 
 
         res.status(200).json({ message: "Order submitted successfully! Notification emails sent.", orderId: orderId });
@@ -2736,8 +2777,11 @@ async function initializeDatabase() {
             console.log(`Default company created with ID: ${defaultCompanyId}`);
 
             // Create a default admin user
-            const adminEmail = "admin@chicagostainless.com";
-            const adminPassword = "adminpassword"; // This should be from an environment variable in production
+            const adminEmail = process.env.DEFAULT_ADMIN_EMAIL || "admin@chicagostainless.com";
+            const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD;
+            if (!adminPassword) {
+                throw new Error("DEFAULT_ADMIN_PASSWORD environment variable is not set. Cannot create default admin user.");
+            }
             const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
             await conn.execute(
@@ -2768,4 +2812,4 @@ initializeDatabase().then(() => {
 }).catch(err => {
     console.error("Failed to start server due to database initialization error:", err);
     process.exit(1);
-});
+}); 
