@@ -2815,7 +2815,8 @@ async function initializeDatabase() {
 
     } catch (err) {
         console.error("Error initializing database:", err);
-        process.exit(1);
+        // Do not exit — tables already exist from previous runs.
+        // A temporary DB timeout at startup should not take the server down.
     } finally {
         if (conn) {
             conn.end();
@@ -2824,12 +2825,13 @@ async function initializeDatabase() {
     }
 }
 
-// Call database initialization before starting the server
-initializeDatabase().then(() => {
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-    });
-}).catch(err => {
-    console.error("Failed to start server due to database initialization error:", err);
-    process.exit(1);
-}); 
+// Always start the server, even if DB init fails.
+// The DB init only creates tables if they don't exist — it is not required for the server to function.
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+// Run DB init in the background after server is already listening.
+initializeDatabase().catch(err => {
+    console.error("Background DB initialization failed (non-fatal):", err);
+});
