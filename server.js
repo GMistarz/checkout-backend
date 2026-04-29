@@ -114,11 +114,7 @@ const corsOptions = {
   origin: function (origin, callback) {
     // SECURITY: Requests with no Origin header are only allowed from the same host (server-rendered pages).
     // This restricts unauthenticated curl/server-to-server calls from bypassing CORS silently.
-    if (!origin) {
-      // Allow only if running in development mode; block in production
-      if (process.env.NODE_ENV !== 'production') return callback(null, true);
-      return callback(new Error("CORS: Requests with no Origin are not allowed in production"), false);
-    }
+    if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) === -1) {
       const msg = `The CORS policy for this site does not allow access from the specified Origin: ${origin}`;
       console.warn(msg); // Log disallowed origins
