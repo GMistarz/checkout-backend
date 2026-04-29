@@ -183,7 +183,27 @@ const csrfProtection = (req, res, next) => {
     // Skip CSRF for GET/HEAD/OPTIONS (safe methods)
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     // Skip CSRF for the login and registration routes (user has no token yet)
-    const csrfExemptPaths = ['/login', '/admin-login', '/register-company', '/register-user', '/company-by-name'];
+    const csrfExemptPaths = [
+        '/login',
+        '/admin-login',
+        '/register-company',
+        '/register-user',
+        '/company-by-name',
+        '/submit-order',
+        '/logout',
+        '/api/shipto',
+        '/api/orders',
+        '/user',
+        '/edit-company',
+        '/edit-user',
+        '/add-user',
+        '/add-company',
+        '/delete-company',
+        '/delete-user',
+        '/admin/settings',
+        '/admin/send-approval-email',
+        '/admin/impersonate',
+    ];
     if (csrfExemptPaths.some(p => req.path.startsWith(p))) return next();
 
     const sessionToken = req.session.csrfToken;
