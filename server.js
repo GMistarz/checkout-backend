@@ -1313,7 +1313,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
+    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, phone, website, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC");
     console.log(`[GET /companies] Found ${companies.length} companies.`);
     res.json(companies);
   } catch (err) {
@@ -1326,7 +1326,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // MODIFIED: /edit-company endpoint
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, ap_email, website, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body; // Added ap_email
+  const { id, name, address1, ap_email, phone, website, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body;
   console.log(`[POST /edit-company] Editing company ID: ${id}`);
   if (!id) {
     console.warn("[POST /edit-company] Company ID is required for update.");
@@ -1346,7 +1346,8 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
     if (name !== undefined) { fieldsToUpdate.push("name = ?"); values.push(name); }
     if (address1 !== undefined) { fieldsToUpdate.push("address1 = ?"); values.push(address1); }
-    if (ap_email !== undefined) { fieldsToUpdate.push("ap_email = ?"); values.push(ap_email); } // Added ap_email
+    if (ap_email !== undefined) { fieldsToUpdate.push("ap_email = ?"); values.push(ap_email); }
+    if (phone !== undefined) { fieldsToUpdate.push("phone = ?"); values.push(phone); }
     if (website !== undefined) { fieldsToUpdate.push("website = ?"); values.push(website); }
     if (city !== undefined) { fieldsToUpdate.push("city = ?"); values.push(city); }
     if (state !== undefined) { fieldsToUpdate.push("state = ?"); values.push(state); }
@@ -1390,16 +1391,16 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, city, state, zip, country, terms, discount
+    name, logo, address1, ap_email, phone, website, city, state, zip, country, terms, discount
   } = req.body;
   console.log(`[POST /add-company] Adding new company: ${name}`);
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)
-    `, [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '']);
+      INSERT INTO companies (name, logo, address1, ap_email, phone, website, city, state, zip, country, terms, discount, notes, approved, denied)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)
+    `, [name, logo || '', address1, ap_email || '', phone || '', website || '', city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '']);
     console.log(`[POST /add-company] Company ${name} created with ID: ${result.insertId}`);
     res.status(200).json({ message: "Company created", id: result.insertId });
   } catch (err) {
@@ -2497,6 +2498,7 @@ async function initializeDatabase() {
                 logo VARCHAR(255),
                 address1 TEXT,
                 ap_email VARCHAR(255),
+                phone VARCHAR(50),
                 website VARCHAR(255),
                 city VARCHAR(255),
                 state VARCHAR(255),
@@ -2542,6 +2544,22 @@ async function initializeDatabase() {
             console.log("'website' column added to 'companies' table.");
         } else {
             console.log("'website' column already exists in 'companies' table.");
+        }
+
+        // Check if 'phone' column exists in 'companies' table before adding it
+        const [companiesPhoneColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'phone';
+        `, [dbConnectionConfig.database]);
+
+        if (companiesPhoneColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE companies ADD COLUMN phone VARCHAR(50) AFTER ap_email;
+            `);
+            console.log("'phone' column added to 'companies' table.");
+        } else {
+            console.log("'phone' column already exists in 'companies' table.");
         }
 
         // Create 'users' table if not exists with foreign key
