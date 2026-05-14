@@ -1528,7 +1528,7 @@ app.get("/company-users/:companyId", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role FROM users WHERE company_id = ?", [companyId]);
+    const [users] = await conn.execute("SELECT id, email, first_name, last_name, phone, role, created_at FROM users WHERE company_id = ?", [companyId]);
     console.log(`[GET /company-users/:companyId] Found ${users.length} users for company ID: ${companyId}`);
     res.json(users);
   } catch (err) {
@@ -2396,15 +2396,8 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         let formattedOrders = orders.map(order => {
             let parsedItems = [];
             console.log(`[GET /api/orders/:companyId] Raw items data for order ${order.id}:`, order.items);
-            // Handle both JSON column (auto-parsed by mysql2) and TEXT column (returned as string)
-            if (typeof order.items === 'string') {
-                try { parsedItems = JSON.parse(order.items); } catch(e) {
-                    console.warn(`Failed to parse items JSON string for order ${order.id}:`, e);
-                    parsedItems = [];
-                }
-            } else {
-                parsedItems = order.items;
-            }
+            // mysql2 driver automatically parses JSON columns, so no need for JSON.parse()
+            parsedItems = order.items; 
             if (!Array.isArray(parsedItems)) {
                 console.warn(`Items for order ${order.id} is not an array, received:`, parsedItems);
                 parsedItems = [];
