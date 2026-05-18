@@ -2473,6 +2473,71 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
 });
 
 
+
+// ─── Shopping Cart Routes ────────────────────────────────────────────────────
+
+// GET /api/cart — return the current user's saved cart
+app.get("/api/cart", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(
+            "SELECT cart_data FROM user_carts WHERE user_id = ?", [userId]
+        );
+        res.json(rows.length ? (rows[0].cart_data || []) : []);
+    } catch (err) {
+        console.error("[GET /api/cart] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve cart" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// POST /api/cart — save/overwrite the current user's cart
+app.post("/api/cart", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { cartData } = req.body;
+    if (!Array.isArray(cartData)) {
+        return res.status(400).json({ error: "cartData must be an array" });
+    }
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.execute(
+            `INSERT INTO user_carts (user_id, cart_data)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE cart_data = VALUES(cart_data), updated_at = CURRENT_TIMESTAMP`,
+            [userId, JSON.stringify(cartData)]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[POST /api/cart] Error:", err);
+        res.status(500).json({ error: "Failed to save cart" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// GET /api/cart/user/:userId — admin only: view any user's saved cart
+app.get("/api/cart/user/:userId", requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(
+            "SELECT cart_data FROM user_carts WHERE user_id = ?", [userId]
+        );
+        res.json(rows.length ? (rows[0].cart_data || []) : []);
+    } catch (err) {
+        console.error("[GET /api/cart/user/:userId] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve user cart" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
@@ -2605,6 +2670,18 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'login_history' table checked/created.");
+
+        // Create 'user_carts' table for server-side cart persistence
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS user_carts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL UNIQUE,
+                cart_data JSON,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB;
+        `);
+        console.log("'user_carts' table checked/created.");
 
         // Create 'shipto_addresses' table if not exists with foreign key
         await conn.execute(`
