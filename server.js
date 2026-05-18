@@ -699,6 +699,7 @@ app.get("/login-via-token/:token", async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
+        req.session.isImpersonated = true; // Flag so the portal skips localStorage cart sync
         req.session.csrfToken = generateCsrfToken();
 
         await new Promise((resolve, reject) => {
@@ -966,7 +967,8 @@ app.get("/user-profile", requireAuth, async (req, res) => {
           company_id: user.companyId,
           first_name: user.firstName,
           last_name: user.lastName,
-          phone: user.phone // Include phone number here
+          phone: user.phone, // Include phone number here
+          isImpersonated: req.session.isImpersonated || false
       });
   } else {
       console.log("[User Profile Route] User not found in session (should be caught by requireAuth).");
