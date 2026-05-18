@@ -2497,7 +2497,13 @@ app.get("/api/cart", requireAuth, async (req, res) => {
 });
 
 // POST /api/cart — save/overwrite the current user's cart
-app.post("/api/cart", requireAuth, async (req, res) => {
+// No requireAuth middleware: silently skips save when user is not logged in
+// so the configurator can always call this without causing errors.
+app.post("/api/cart", async (req, res) => {
+    if (!req.session.user) {
+        // Not logged in — acknowledge the request but skip the save
+        return res.json({ success: false, reason: "not_logged_in" });
+    }
     const userId = req.session.user.id;
     const { cartData } = req.body;
     if (!Array.isArray(cartData)) {
@@ -2512,6 +2518,7 @@ app.post("/api/cart", requireAuth, async (req, res) => {
              ON DUPLICATE KEY UPDATE cart_data = VALUES(cart_data), updated_at = CURRENT_TIMESTAMP`,
             [userId, JSON.stringify(cartData)]
         );
+        console.log(`[POST /api/cart] Cart saved for user ID ${userId}, ${cartData.length} item(s).`);
         res.json({ success: true });
     } catch (err) {
         console.error("[POST /api/cart] Error:", err);
