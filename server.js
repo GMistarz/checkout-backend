@@ -2488,7 +2488,14 @@ app.get("/api/cart", requireAuth, async (req, res) => {
         const [rows] = await conn.execute(
             "SELECT cart_data FROM user_carts WHERE user_id = ?", [userId]
         );
-        res.json(rows.length ? (rows[0].cart_data || []) : []);
+        if (!rows.length) return res.json([]);
+        // cart_data may come back as a parsed array or as a raw JSON string
+        // depending on the mysql2 version — handle both
+        let cartData = rows[0].cart_data;
+        if (typeof cartData === 'string') {
+            try { cartData = JSON.parse(cartData); } catch(e) { cartData = []; }
+        }
+        res.json(Array.isArray(cartData) ? cartData : []);
     } catch (err) {
         console.error("[GET /api/cart] Error:", err);
         res.status(500).json({ error: "Failed to retrieve cart" });
@@ -2538,7 +2545,12 @@ app.get("/api/cart/user/:userId", requireAdmin, async (req, res) => {
         const [rows] = await conn.execute(
             "SELECT cart_data FROM user_carts WHERE user_id = ?", [userId]
         );
-        res.json(rows.length ? (rows[0].cart_data || []) : []);
+        if (!rows.length) return res.json([]);
+        let cartData = rows[0].cart_data;
+        if (typeof cartData === 'string') {
+            try { cartData = JSON.parse(cartData); } catch(e) { cartData = []; }
+        }
+        res.json(Array.isArray(cartData) ? cartData : []);
     } catch (err) {
         console.error("[GET /api/cart/user/:userId] Error:", err);
         res.status(500).json({ error: "Failed to retrieve user cart" });
