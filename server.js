@@ -2304,6 +2304,14 @@ app.post("/submit-order", requireAuth, async (req, res) => {
             .catch(error => { console.error("Error sending user confirmation email::", error.message); });
 
 
+        // Clear the user's saved cart now that the order is placed
+        try {
+            await conn.execute("DELETE FROM user_carts WHERE user_id = ?", [userId]);
+            console.log(`[submit-order] Cart cleared from user_carts for user ID ${userId}.`);
+        } catch (cartErr) {
+            console.warn(`[submit-order] Could not clear user_carts for user ID ${userId}:`, cartErr.message);
+        }
+
         res.status(200).json({ message: "Order submitted successfully! Notification emails sent.", orderId: orderId });
 
     } catch (err) {
@@ -2520,13 +2528,19 @@ app.post("/api/cart", async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        await conn.execute(
-            `INSERT INTO user_carts (user_id, cart_data)
-             VALUES (?, ?)
-             ON DUPLICATE KEY UPDATE cart_data = VALUES(cart_data), updated_at = CURRENT_TIMESTAMP`,
-            [userId, JSON.stringify(cartData)]
-        );
-        console.log(`[POST /api/cart] Cart saved for user ID ${userId}, ${cartData.length} item(s).`);
+        if (cartData.length === 0) {
+            // Empty cart — remove the row entirely so it doesn't appear in abandoned carts
+            await conn.execute("DELETE FROM user_carts WHERE user_id = ?", [userId]);
+            console.log(`[POST /api/cart] Cart cleared (empty) for user ID ${userId}.`);
+        } else {
+            await conn.execute(
+                `INSERT INTO user_carts (user_id, cart_data)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE cart_data = VALUES(cart_data), updated_at = CURRENT_TIMESTAMP`,
+                [userId, JSON.stringify(cartData)]
+            );
+            console.log(`[POST /api/cart] Cart saved for user ID ${userId}, ${cartData.length} item(s).`);
+        }
         res.json({ success: true });
     } catch (err) {
         console.error("[POST /api/cart] Error:", err);
@@ -2559,6 +2573,47 @@ app.get("/api/cart/user/:userId", requireAdmin, async (req, res) => {
     }
 });
 
+
+// GET /api/carts/all — admin only: all users with non-empty carts
+app.get("/api/carts/all", requireAdmin, async (req, res) => {
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(`
+            SELECT uc.user_id, uc.cart_data, uc.updated_at,
+                   u.email, u.first_name, u.last_name,
+                   c.name AS company_name
+            FROM user_carts uc
+            JOIN users u ON u.id = uc.user_id
+            LEFT JOIN companies c ON c.id = u.company_id
+            ORDER BY uc.updated_at DESC
+        `);
+
+        const carts = rows.map(row => {
+            let items = row.cart_data;
+            if (typeof items === 'string') {
+                try { items = JSON.parse(items); } catch(e) { items = []; }
+            }
+            if (!Array.isArray(items)) items = [];
+            return {
+                user_id:      row.user_id,
+                email:        row.email,
+                first_name:   row.first_name,
+                last_name:    row.last_name,
+                company_name: row.company_name,
+                updated_at:   row.updated_at,
+                cart_items:   items
+            };
+        }).filter(c => c.cart_items.length > 0); // only non-empty carts
+
+        res.json(carts);
+    } catch (err) {
+        console.error("[GET /api/carts/all] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve abandoned carts" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
 
 // --- General Routes and Server Start ---
 
