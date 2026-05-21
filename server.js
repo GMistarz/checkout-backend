@@ -902,6 +902,53 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
     }
 });
 
+app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+    }
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(`
+            SELECT uc.user_id, uc.cart_data, uc.updated_at,
+                   u.email, u.first_name, u.last_name,
+                   c.name AS company_name
+            FROM user_carts uc
+            JOIN users u ON u.id = uc.user_id
+            LEFT JOIN companies c ON c.id = u.company_id
+            WHERE DATE(uc.updated_at) BETWEEN ? AND ?
+            ORDER BY uc.updated_at DESC
+        `, [startDate, endDate]);
+
+        const carts = rows.map(row => {
+            let items = row.cart_data;
+            if (typeof items === 'string') {
+                try { items = JSON.parse(items); } catch(e) { items = []; }
+            }
+            if (!Array.isArray(items)) items = [];
+            const total = items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 0)), 0);
+            return {
+                date:        row.updated_at,
+                companyName: row.company_name || '',
+                userName:    `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+                email:       row.email,
+                itemCount:   items.length,
+                total:       total.toFixed(2),
+                items:       items
+            };
+        }).filter(c => c.itemCount > 0);
+
+        console.log(`[GET /admin/abandoned-carts-report] Found ${carts.length} carts between ${startDate} and ${endDate}`);
+        res.json(carts);
+    } catch (err) {
+        console.error("Error generating abandoned carts report:", err);
+        res.status(500).json({ error: "Failed to generate abandoned carts report" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 app.post("/login", loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   let conn;
