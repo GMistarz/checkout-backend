@@ -904,22 +904,30 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
 
 app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
     const { startDate, endDate } = req.query;
-    if (!startDate || !endDate) {
-        return res.status(400).json({ error: "startDate and endDate are required" });
-    }
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute(`
+        let query = `
             SELECT uc.user_id, uc.cart_data, uc.updated_at,
                    u.email, u.first_name, u.last_name,
                    c.name AS company_name
             FROM user_carts uc
             JOIN users u ON u.id = uc.user_id
             LEFT JOIN companies c ON c.id = u.company_id
-            WHERE DATE(uc.updated_at) BETWEEN ? AND ?
-            ORDER BY uc.updated_at DESC
-        `, [startDate, endDate]);
+        `;
+        const params = [];
+        if (startDate && endDate) {
+            query += ` WHERE DATE(uc.updated_at) BETWEEN ? AND ?`;
+            params.push(startDate, endDate);
+        } else if (startDate) {
+            query += ` WHERE DATE(uc.updated_at) >= ?`;
+            params.push(startDate);
+        } else if (endDate) {
+            query += ` WHERE DATE(uc.updated_at) <= ?`;
+            params.push(endDate);
+        }
+        query += ` ORDER BY uc.updated_at DESC`;
+        const [rows] = await conn.execute(query, params);
 
         const carts = rows.map(row => {
             let items = row.cart_data;
