@@ -276,13 +276,18 @@ function toMailtrapOptions(opts) {
     return msg;
 }
 
-// --- NEW: Excluded Emails for Login History Logging ---
+// --- Excluded Emails for Login History Logging ---
+// Any @chicagostainless.com address is excluded automatically, plus any
+// additional external addresses listed below.
 const EXCLUDED_LOGGING_EMAILS = [
-    "greg@chicagostainless.com",
-    "gregm@chicagostainless.com",
-    "emma@chicagostainless.com",
+    // Add non-CSE addresses here if ever needed
 ];
-// --------------------------------------------------------
+function isExcludedFromLogging(email) {
+    const lower = (email || '').toLowerCase();
+    if (lower.endsWith('@chicagostainless.com')) return true;
+    return EXCLUDED_LOGGING_EMAILS.includes(lower);
+}
+// -------------------------------------------------
 
 // --- Helper Middleware for Admin Check ---
 const requireAdmin = (req, res, next) => {
@@ -597,7 +602,7 @@ app.post("/admin-login", loginLimiter, async (req, res) => {
         
         // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
         const userEmailLower = user.email.toLowerCase();
-        if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
+        if (!isExcludedFromLogging(userEmailLower)) {
             const ip = req.ip || req.connection.remoteAddress;
             await conn.execute(
                 'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
@@ -1000,7 +1005,7 @@ app.post("/login", loginLimiter, async (req, res) => {
 
     // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
     const userEmailLower = user.email.toLowerCase();
-    if (!EXCLUDED_LOGGING_EMAILS.includes(userEmailLower)) {
+    if (!isExcludedFromLogging(userEmailLower)) {
         const ip = req.ip || req.connection.remoteAddress;
         await conn.execute(
             'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
