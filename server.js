@@ -633,8 +633,18 @@ app.post("/admin-login", loginLimiter, async (req, res) => {
             );
         }
         // --- END MODIFIED LOGIC ---
-        
-        res.json({ message: "Admin login successful", role: user.role });
+
+        // IMPORTANT: explicitly save the session to MySQL before responding.
+        // Without this, res.json() fires before the async DB write completes.
+        // The client then immediately calls /companies, the session row isn't
+        // there yet, and the server returns 401 — forcing a second login.
+        req.session.save((saveErr) => {
+            if (saveErr) {
+                console.error("Admin login: session save error:", saveErr);
+                return res.status(500).json({ error: "Login succeeded but session could not be saved. Please try again." });
+            }
+            res.json({ message: "Admin login successful", role: user.role });
+        });
 
     } catch (err) {
         console.error("Admin login error:", err);
@@ -1027,7 +1037,15 @@ app.post("/login", loginLimiter, async (req, res) => {
     }
     // --- END MODIFIED LOGIC ---
 
-    res.json({ message: "Login successful", role: user.role });
+    // Explicitly save session to MySQL before responding (same race-condition
+    // fix as /admin-login — ensures session row exists before client's next request).
+    req.session.save((saveErr) => {
+        if (saveErr) {
+            console.error("Login: session save error:", saveErr);
+            return res.status(500).json({ error: "Login succeeded but session could not be saved. Please try again." });
+        }
+        res.json({ message: "Login successful", role: user.role });
+    });
 
   } catch (err) {
     console.error("Login error:", err);
@@ -1982,7 +2000,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
         return `
             <tr>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: center; color: #000000; vertical-align: top;">${item.quantity}</td>
-                <td style="border: 1px solid #ccc; padding: 8px; text-align: left; font-family: Arial, sans-serif; font-size: 14px; white-space: pre-wrap; word-wrap: break-word;">${item.partNo}<br>${item.description || ''}${item.note ? `<div style="height: 7px;"></div><small>${item.note.replace(/\n/g, '<br>')}</small>` : ''}</td>
+                <td style="border: 1px solid #ccc; padding: 8px; text-align: left; font-family: Arial, sans-serif; font-size: 14px; white-space: pre-wrap; word-wrap: break-word;"><strong>${item.partNo}</strong><br>${item.description || ''}${item.note ? `<div style="height: 7px;"></div><small>${item.note.replace(/\n/g, '<br>')}</small>` : ''}</td>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: right; width: 15%; color: #000000; vertical-align: top;">$${item.netPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td style="border: 1px solid #ccc; padding: 8px; text-align: right; color: #000000; vertical-align: top;">$${item.lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
             </tr>
