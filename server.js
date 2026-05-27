@@ -22,6 +22,38 @@ const chromium = require('@sparticuz/chromium');
 // Apply the stealth plugin to puppeteer
 puppeteer.use(StealthPlugin());
 
+// --- CSE Logo: preloaded as base64 so Puppeteer and email clients never need
+//     to make an outbound HTTP request to fetch it.  Populated at startup;
+//     falls back gracefully to the remote URL if the fetch fails. ---
+let CSE_LOGO_SRC = 'https://www.chicagostainless.com/graphics/cse_logo.png';
+
+(async () => {
+    try {
+        const https = require('https');
+        await new Promise((resolve) => {
+            https.get('https://www.chicagostainless.com/graphics/cse_logo.png', (res) => {
+                const chunks = [];
+                res.on('data', (c) => chunks.push(c));
+                res.on('end', () => {
+                    const b64 = Buffer.concat(chunks).toString('base64');
+                    CSE_LOGO_SRC = `data:image/png;base64,${b64}`;
+                    console.log('[CSE Logo] Preloaded and embedded as base64.');
+                    resolve();
+                });
+                res.on('error', (err) => {
+                    console.warn('[CSE Logo] Stream error during preload:', err.message);
+                    resolve(); // keep the fallback URL
+                });
+            }).on('error', (err) => {
+                console.warn('[CSE Logo] Could not preload logo, will use remote URL as fallback:', err.message);
+                resolve();
+            });
+        });
+    } catch (e) {
+        console.warn('[CSE Logo] Preload exception, will use remote URL as fallback:', e.message);
+    }
+})();
+
 // --- Secure impersonation token store (in-memory, short-lived, single-use) ---
 // Maps token -> { userId, expires }
 const impersonationTokens = new Map();
@@ -2004,7 +2036,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 5px;">
                 <tr>
                     <td style="width: 95px; text-align: left; vertical-align: middle; padding: 0;">
-                        <img src="https://www.chicagostainless.com/graphics/cse_logo.png" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
+                        <img src="${CSE_LOGO_SRC}" alt="CSE Logo" style="width: 95px; height: auto; display: block;">
                     </td>
                     <td style="text-align: center; vertical-align: middle; padding: 0;">
                         <h1 style="font-size: 22px; color: #000000; margin: 0; padding: 0; line-height: 1.2;">CSE WEBSITE ORDER</h1>
