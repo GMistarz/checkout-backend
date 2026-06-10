@@ -12,6 +12,7 @@ const { v4: uuidv4 } = require('uuid'); // NEW: Import uuid for unique temp dire
 const fs = require('fs/promises'); // NEW: For async file system operations
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const rateLimit = require("express-rate-limit"); // For brute-force protection
+const twilio = require('twilio'); // For SMS notifications
 
 // NEW: Import puppeteer-extra and the stealth plugin
 const puppeteer = require('puppeteer-extra');
@@ -276,6 +277,39 @@ function toMailtrapOptions(opts) {
     return msg;
 }
 
+// --- Twilio SMS Configuration ---
+const twilioClient = (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN)
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null;
+if (twilioClient) {
+    console.log('Twilio Config: credentials loaded, SMS notifications enabled.');
+} else {
+    console.warn('Twilio Config: TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set — SMS notifications disabled.');
+}
+
+// Helper to send SMS to one or more phone numbers (semicolon or comma-separated string or array)
+async function sendSmsNotification(toNumbers, body) {
+    if (!twilioClient) {
+        console.warn('Twilio not configured — skipping SMS notification.');
+        return;
+    }
+    const numbers = Array.isArray(toNumbers)
+        ? toNumbers
+        : toNumbers.split(/[;,]/).map(n => n.trim()).filter(Boolean);
+    for (const to of numbers) {
+        try {
+            await twilioClient.messages.create({
+                from: process.env.TWILIO_FROM_NUMBER,
+                to,
+                body
+            });
+            console.log(`SMS sent to ${to}`);
+        } catch (err) {
+            console.error(`Error sending SMS to ${to}:`, err.message);
+        }
+    }
+}
+
 // --- Excluded Emails for Login History Logging ---
 // Any @chicagostainless.com address is excluded automatically, plus any
 // additional external addresses listed below.
@@ -374,7 +408,7 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [settings] = await conn.execute("SELECT po_email FROM admin_settings WHERE id = 1");
+        const [settings] = await conn.execute("SELECT po_email, po_sms FROM admin_settings WHERE id = 1");
         const rawPoEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
         const recipientEmail = rawPoEmail.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
@@ -409,6 +443,14 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
         mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("Order notification email sent:"); })
             .catch(error => { console.error("Error sending order notification email::", error.message); });
+
+        // Send SMS notification if phone numbers are configured
+        const poSmsNumbers = (settings[0]?.po_sms || '').split(/[;,]/).map(n => n.trim()).filter(Boolean);
+        if (poSmsNumbers.length) {
+            sendSmsNotification(poSmsNumbers,
+                `New Website Order #${orderId} — PO# ${orderDetails.poNumber} from ${orderDetails.orderedBy}. Check your email for the full details.`
+            );
+        }
     } catch (err) {
         console.error("Error fetching admin PO email or sending order notification:", err);
     } finally {
@@ -421,7 +463,7 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [settings] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
+        const [settings] = await conn.execute("SELECT registration_email, registration_sms FROM admin_settings WHERE id = 1");
         const rawRegEmail1 = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
         const recipientEmail = rawRegEmail1.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
@@ -458,6 +500,14 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
         mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("New user registration email sent:"); })
             .catch(error => { console.error("Error sending new user registration email::", error.message); });
+
+        // Send SMS notification if phone numbers are configured
+        const regSmsNumbers1 = (settings[0]?.registration_sms || '').split(/[;,]/).map(n => n.trim()).filter(Boolean);
+        if (regSmsNumbers1.length) {
+            sendSmsNotification(regSmsNumbers1,
+                `New Company Registration: ${companyName} — ${firstName} ${lastName} (${userEmail}). Check your email for details.`
+            );
+        }
     } catch (err) {
         console.error("Error fetching admin registration email or sending registration notification:", err);
     } finally {
@@ -470,7 +520,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [settings] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
+        const [settings] = await conn.execute("SELECT registration_email, registration_sms FROM admin_settings WHERE id = 1");
         const rawRegEmail2 = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
         const recipientEmail = rawRegEmail2.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
@@ -496,6 +546,14 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
         mailtrap.send(toMailtrapOptions(mailOptions))
             .then(() => { console.log("Existing company user registration email sent:"); })
             .catch(error => { console.error("Error sending existing company user registration email::", error.message); });
+
+        // Send SMS notification if phone numbers are configured
+        const regSmsNumbers2 = (settings[0]?.registration_sms || '').split(/[;,]/).map(n => n.trim()).filter(Boolean);
+        if (regSmsNumbers2.length) {
+            sendSmsNotification(regSmsNumbers2,
+                `New User Registration: ${firstName} ${lastName} joined ${companyName} (${userEmail}). Check your email for details.`
+            );
+        }
     } catch (err) {
         console.error("Error fetching admin registration email or sending existing company user notification:", err);
     } finally {
@@ -1818,13 +1876,13 @@ app.get("/admin/settings", requireAdmin, async (req, res) => {
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
-        const [rows] = await conn.execute("SELECT po_email, registration_email FROM admin_settings WHERE id = 1");
+        const [rows] = await conn.execute("SELECT po_email, registration_email, po_sms, registration_sms FROM admin_settings WHERE id = 1");
         if (rows.length > 0) {
             console.log("[GET /admin/settings] Admin settings found.");
             res.json(rows[0]);
         } else {
             console.log("[GET /admin/settings] No admin settings found, returning defaults.");
-            res.json({ po_email: "", registration_email: "" });
+            res.json({ po_email: "", registration_email: "", po_sms: "", registration_sms: "" });
         }
     } catch (err) {
         console.error("Error fetching admin settings:", err);
@@ -1835,22 +1893,22 @@ app.get("/admin/settings", requireAdmin, async (req, res) => {
 });
 
 app.post("/admin/settings", requireAdmin, async (req, res) => {
-    const { po_email, registration_email } = req.body;
-    console.log(`[POST /admin/settings] Saving admin settings: PO Email=${po_email}, Reg Email=${registration_email}`);
+    const { po_email, registration_email, po_sms, registration_sms } = req.body;
+    console.log(`[POST /admin/settings] Saving admin settings: PO Email=${po_email}, Reg Email=${registration_email}, PO SMS=${po_sms}, Reg SMS=${registration_sms}`);
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [existing] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
         if (existing.length > 0) {
             await conn.execute(
-                "UPDATE admin_settings SET po_email = ?, registration_email = ? WHERE id = 1",
-                [po_email, registration_email]
+                "UPDATE admin_settings SET po_email = ?, registration_email = ?, po_sms = ?, registration_sms = ? WHERE id = 1",
+                [po_email, registration_email, po_sms || null, registration_sms || null]
             );
             console.log("[POST /admin/settings] Admin settings updated.");
         } else {
             await conn.execute(
-                "INSERT INTO admin_settings (id, po_email, registration_email) VALUES (1, ?, ?)",
-                [po_email, registration_email]
+                "INSERT INTO admin_settings (id, po_email, registration_email, po_sms, registration_sms) VALUES (1, ?, ?, ?, ?)",
+                [po_email, registration_email, po_sms || null, registration_sms || null]
             );
             console.log("[POST /admin/settings] Admin settings inserted.");
         }
@@ -2307,13 +2365,17 @@ app.post("/submit-order", requireAuth, async (req, res) => {
 
         // NEW: Fetch admin settings for PO email recipient
         let poEmailRecipient = ["Greg@ChicagoStainless.com"]; // Default fallback
+        let poSmsRecipient = [];
         try {
-            const [settingsRows] = await conn.execute("SELECT po_email FROM admin_settings WHERE id = 1");
+            const [settingsRows] = await conn.execute("SELECT po_email, po_sms FROM admin_settings WHERE id = 1");
             if (settingsRows.length > 0 && settingsRows[0].po_email) {
                 poEmailRecipient = settingsRows[0].po_email.split(/[;,]/).map(e => e.trim()).filter(Boolean);
             }
+            if (settingsRows.length > 0 && settingsRows[0].po_sms) {
+                poSmsRecipient = settingsRows[0].po_sms.split(/[;,]/).map(n => n.trim()).filter(Boolean);
+            }
         } catch (settingsErr) {
-            console.error("Error fetching PO email recipient from admin_settings:", settingsErr);
+            console.error("Error fetching PO email/SMS recipient from admin_settings:", settingsErr);
         }
 
         // NEW: Send order information email to you (the administrator) with PDF attachment
@@ -2347,6 +2409,13 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         mailtrap.send(toMailtrapOptions(adminMailOptions))
             .then(() => { console.log("Admin order notification email sent:"); })
             .catch(error => { console.error("Error sending admin order notification email::", error.message); });
+
+        // Send SMS notification if phone numbers are configured
+        if (poSmsRecipient.length) {
+            sendSmsNotification(poSmsRecipient,
+                `New Website Order — ${company.name}, PO# ${poNumber}, by ${orderedBy}. Check your email for the full details.`
+            );
+        }
 
         // NEW: Send confirmation email to the user
         const userConfirmationMailOptions = {
@@ -3005,17 +3074,37 @@ async function initializeDatabase() {
             CREATE TABLE IF NOT EXISTS admin_settings (
                 id INT PRIMARY KEY DEFAULT 1,
                 po_email VARCHAR(255),
-                registration_email VARCHAR(255)
+                registration_email VARCHAR(255),
+                po_sms VARCHAR(500),
+                registration_sms VARCHAR(500)
             ) ENGINE=InnoDB;
         `);
         console.log("'admin_settings' table checked/created.");
+
+        // Migrate existing admin_settings table: add SMS columns if they don't exist
+        const [poSmsColCheck] = await conn.execute(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'admin_settings' AND COLUMN_NAME = 'po_sms';
+        `, [dbConnectionConfig.database]);
+        if (poSmsColCheck.length === 0) {
+            await conn.execute(`ALTER TABLE admin_settings ADD COLUMN po_sms VARCHAR(500);`);
+            console.log("'po_sms' column added to 'admin_settings' table.");
+        }
+        const [regSmsColCheck] = await conn.execute(`
+            SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'admin_settings' AND COLUMN_NAME = 'registration_sms';
+        `, [dbConnectionConfig.database]);
+        if (regSmsColCheck.length === 0) {
+            await conn.execute(`ALTER TABLE admin_settings ADD COLUMN registration_sms VARCHAR(500);`);
+            console.log("'registration_sms' column added to 'admin_settings' table.");
+        }
 
         // Insert default admin settings if not exists
         const [settingsRows] = await conn.execute("SELECT id FROM admin_settings WHERE id = 1");
         if (settingsRows.length === 0) {
             await conn.execute(
-                "INSERT INTO admin_settings (id, po_email, registration_email) VALUES (1, ?, ?)",
-                ["Greg@ChicagoStainless.com", "Greg@ChicagoStainless.com"] // Default emails
+                "INSERT INTO admin_settings (id, po_email, registration_email, po_sms, registration_sms) VALUES (1, ?, ?, NULL, NULL)",
+                ["Greg@ChicagoStainless.com", "Greg@ChicagoStainless.com"]
             );
             console.log("Default admin settings inserted.");
         }
