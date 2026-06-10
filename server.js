@@ -375,7 +375,8 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [settings] = await conn.execute("SELECT po_email FROM admin_settings WHERE id = 1");
-        const recipientEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const rawPoEmail = settings[0]?.po_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const recipientEmail = rawPoEmail.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
         const mailOptions = {
             from: EMAIL_FROM, // Changed FROM address
@@ -421,7 +422,8 @@ async function sendRegistrationNotificationEmail(companyName, userEmail, firstNa
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [settings] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
-        const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const rawRegEmail1 = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const recipientEmail = rawRegEmail1.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
         const mailOptions = {
             from: EMAIL_FROM, // Changed FROM address
@@ -469,7 +471,8 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [settings] = await conn.execute("SELECT registration_email FROM admin_settings WHERE id = 1");
-        const recipientEmail = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const rawRegEmail2 = settings[0]?.registration_email || "Greg@ChicagoStainless.com"; // Fallback email
+        const recipientEmail = rawRegEmail2.split(/[;,]/).map(e => e.trim()).filter(Boolean);
 
         const mailOptions = {
             from: EMAIL_FROM,
@@ -2303,11 +2306,11 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         }
 
         // NEW: Fetch admin settings for PO email recipient
-        let poEmailRecipient = "Greg@ChicagoStainless.com"; // Default fallback
+        let poEmailRecipient = ["Greg@ChicagoStainless.com"]; // Default fallback
         try {
             const [settingsRows] = await conn.execute("SELECT po_email FROM admin_settings WHERE id = 1");
             if (settingsRows.length > 0 && settingsRows[0].po_email) {
-                poEmailRecipient = settingsRows[0].po_email;
+                poEmailRecipient = settingsRows[0].po_email.split(/[;,]/).map(e => e.trim()).filter(Boolean);
             }
         } catch (settingsErr) {
             console.error("Error fetching PO email recipient from admin_settings:", settingsErr);
