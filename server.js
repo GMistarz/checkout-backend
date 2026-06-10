@@ -86,7 +86,12 @@ const dbConnectionConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  connectTimeout: 10000 // 10-second connection timeout
+  connectTimeout: 10000, // 10-second connection timeout
+  dateStrings: true      // Return DATETIME/TIMESTAMP as "YYYY-MM-DD HH:MM:SS" strings
+                         // instead of JS Date objects. Required so parseToLocal() on the
+                         // client can correctly interpret them as US/Central time.
+                         // Without this, mysql2 serializes Date objects with a 'Z' suffix
+                         // which bypasses the timezone correction in the dashboard.
 };
 
 // Configuration for the express-mysql-session store
@@ -850,7 +855,7 @@ app.get("/admin/login-report", requireAdmin, async (req, res) => {
             FROM login_history lh
             JOIN users u ON lh.user_id = u.id
             JOIN companies c ON u.company_id = c.id
-            WHERE DATE(lh.login_time) BETWEEN ? AND ?
+            WHERE lh.login_time >= ? AND lh.login_time < DATE_ADD(?, INTERVAL 1 DAY)
             ORDER BY lh.login_time DESC;
         `;
         const [report] = await conn.execute(query, [startDate, endDate]);
@@ -887,7 +892,7 @@ app.get("/admin/orders-report", requireAdmin, async (req, res) => {
                 c.name AS companyName
             FROM orders o
             JOIN companies c ON o.companyId = c.id
-            WHERE DATE(o.date) BETWEEN ? AND ?
+            WHERE o.date >= ? AND o.date < DATE_ADD(?, INTERVAL 1 DAY)
             ORDER BY o.date DESC;
         `;
         const [report] = await conn.execute(query, [startDate, endDate]);
@@ -997,13 +1002,13 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
         `;
         const params = [];
         if (startDate && endDate) {
-            query += ` WHERE DATE(uc.updated_at) BETWEEN ? AND ?`;
+            query += ` WHERE uc.updated_at >= ? AND uc.updated_at < DATE_ADD(?, INTERVAL 1 DAY)`;
             params.push(startDate, endDate);
         } else if (startDate) {
-            query += ` WHERE DATE(uc.updated_at) >= ?`;
+            query += ` WHERE uc.updated_at >= ?`;
             params.push(startDate);
         } else if (endDate) {
-            query += ` WHERE DATE(uc.updated_at) <= ?`;
+            query += ` WHERE uc.updated_at < DATE_ADD(?, INTERVAL 1 DAY)`;
             params.push(endDate);
         }
         query += ` ORDER BY uc.updated_at DESC`;
@@ -2520,11 +2525,11 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             params.push(`%${poNumber}%`);
         }
         if (startDate) {
-            query += " AND DATE(o.date) >= ?";
+            query += " AND o.date >= ?";
             params.push(startDate);
         }
         if (endDate) {
-            query += " AND DATE(o.date) <= ?";
+            query += " AND o.date < DATE_ADD(?, INTERVAL 1 DAY)";
             params.push(endDate);
         }
         
