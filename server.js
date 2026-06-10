@@ -86,11 +86,11 @@ const dbConnectionConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  connectTimeout: 10000, // Add a 10-second connection timeout (10000 ms)
-  timezone: 'Z'          // FIX: Treat all DATETIME/TIMESTAMP columns as UTC so
-                         // mysql2 never offsets them by the server's local timezone.
-                         // Without this, records written "just now" appear 5h old
-                         // in the activity feed for Eastern-timezone users.
+  connectTimeout: 10000,  // 10-second connection timeout
+  timezone: 'Z',          // Tell mysql2 the DB server is UTC
+  dateStrings: true        // Return DATETIME columns as plain "YYYY-MM-DD HH:MM:SS" strings
+                           // instead of JS Date objects, preventing silent timezone offsets.
+                           // The client parseToLocal() appends 'Z' and handles UTC->local correctly.
 };
 
 // Configuration for the express-mysql-session store
@@ -2343,7 +2343,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         // MODIFIED: Added orderedByName and shippingAddressId to the INSERT statement
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, carrierAccount, thirdPartyDetails, items, date, orderedByEmail, orderedByPhone, orderedByName, companyId)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`, // Added new columns
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?, ?)`, // UTC_TIMESTAMP() ensures UTC is stored regardless of MySQL server timezone
             [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, finalCarrierAccountForDb, JSON.stringify(thirdPartyDetails), JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, orderedBy, companyId] // Store calculated items and finalCarrierAccountForDb, shippingAddressId, and orderedBy
         );
         const orderId = orderResult.insertId;
@@ -2984,7 +2984,7 @@ async function initializeDatabase() {
                 carrierAccount VARCHAR(255),
                 thirdPartyDetails JSON,
                 items JSON NOT NULL,
-                date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                date DATETIME DEFAULT (UTC_TIMESTAMP()),
                 orderedByEmail VARCHAR(255),
                 orderedByPhone VARCHAR(50),
                 orderedByName VARCHAR(255),
