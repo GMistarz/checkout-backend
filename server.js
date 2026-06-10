@@ -86,7 +86,11 @@ const dbConnectionConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  connectTimeout: 10000 // Add a 10-second connection timeout (10000 ms)
+  connectTimeout: 10000, // Add a 10-second connection timeout (10000 ms)
+  timezone: 'Z'          // FIX: Treat all DATETIME/TIMESTAMP columns as UTC so
+                         // mysql2 never offsets them by the server's local timezone.
+                         // Without this, records written "just now" appear 5h old
+                         // in the activity feed for Eastern-timezone users.
 };
 
 // Configuration for the express-mysql-session store
@@ -95,6 +99,7 @@ const sessionStoreOptions = {
   user: dbConnectionConfig.user,
   password: dbConnectionConfig.password,
   database: dbConnectionConfig.database,
+  timezone: 'Z',                   // FIX: Match dbConnectionConfig — treat session timestamps as UTC
   clearExpired: true,              // Automatically clear expired sessions
   checkExpirationInterval: 900000, // 15 minutes
   expiration: 86400000,            // 24 hours
