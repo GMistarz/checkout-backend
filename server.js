@@ -87,10 +87,10 @@ const dbConnectionConfig = {
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
   connectTimeout: 10000,  // 10-second connection timeout
-  timezone: 'Z',          // Tell mysql2 the DB server is UTC
-  dateStrings: true        // Return DATETIME columns as plain "YYYY-MM-DD HH:MM:SS" strings
-                           // instead of JS Date objects, preventing silent timezone offsets.
-                           // The client parseToLocal() appends 'Z' and handles UTC->local correctly.
+  timezone: '+00:00',     // Tell mysql2 the DB server is UTC so TIMESTAMP columns
+                          // are read/written correctly. DATETIME columns (orders.date)
+                          // are stored as US/Central by the MySQL server — the client
+                          // parseToLocal() handles the Central->local conversion.
 };
 
 // Configuration for the express-mysql-session store
