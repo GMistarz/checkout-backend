@@ -86,11 +86,7 @@ const dbConnectionConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
   database: process.env.DB_NAME,
-  connectTimeout: 10000,  // 10-second connection timeout
-  timezone: '+00:00',     // Tell mysql2 the DB server is UTC so TIMESTAMP columns
-                          // are read/written correctly. DATETIME columns (orders.date)
-                          // are stored as US/Central by the MySQL server — the client
-                          // parseToLocal() handles the Central->local conversion.
+  connectTimeout: 10000 // 10-second connection timeout
 };
 
 // Configuration for the express-mysql-session store
@@ -99,7 +95,6 @@ const sessionStoreOptions = {
   user: dbConnectionConfig.user,
   password: dbConnectionConfig.password,
   database: dbConnectionConfig.database,
-  timezone: 'Z',                   // FIX: Match dbConnectionConfig — treat session timestamps as UTC
   clearExpired: true,              // Automatically clear expired sessions
   checkExpirationInterval: 900000, // 15 minutes
   expiration: 86400000,            // 24 hours
@@ -2343,7 +2338,7 @@ app.post("/submit-order", requireAuth, async (req, res) => {
         // MODIFIED: Added orderedByName and shippingAddressId to the INSERT statement
         const [orderResult] = await conn.execute(
             `INSERT INTO orders (email, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, carrierAccount, thirdPartyDetails, items, date, orderedByEmail, orderedByPhone, orderedByName, companyId)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?, ?)`, // UTC_TIMESTAMP() ensures UTC is stored regardless of MySQL server timezone
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`, // Added new columns
             [orderedByEmail, poNumber, billingAddress, shippingAddress, shippingAddressId, attn, tag, shippingMethod, shippingAccountType, finalCarrierAccountForDb, JSON.stringify(thirdPartyDetails), JSON.stringify(orderItemsWithCalculatedPrices), orderedByEmail, orderedByPhone, orderedBy, companyId] // Store calculated items and finalCarrierAccountForDb, shippingAddressId, and orderedBy
         );
         const orderId = orderResult.insertId;
@@ -2984,7 +2979,7 @@ async function initializeDatabase() {
                 carrierAccount VARCHAR(255),
                 thirdPartyDetails JSON,
                 items JSON NOT NULL,
-                date DATETIME DEFAULT (UTC_TIMESTAMP()),
+                date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 orderedByEmail VARCHAR(255),
                 orderedByPhone VARCHAR(50),
                 orderedByName VARCHAR(255),
