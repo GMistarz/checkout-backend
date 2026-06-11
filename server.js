@@ -707,6 +707,43 @@ app.get("/admin/check-auth", (req, res) => {
     }
 });
 
+// Customer Check Auth Route — returns session state + company discount for the configurator pages
+// Returns 200 with { authenticated: true, firstName, discount } when logged in,
+// or 200 with { authenticated: false } when not (never 401, so the front-end fetch is always clean).
+app.get("/check-auth", async (req, res) => {
+    if (!req.session.user) {
+        return res.status(200).json({ authenticated: false });
+    }
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [companies] = await conn.execute(
+            "SELECT discount FROM companies WHERE id = ?",
+            [req.session.user.companyId]
+        );
+        const discount = parseFloat(companies[0]?.discount) || 0;
+        res.status(200).json({
+            authenticated: true,
+            firstName:     req.session.user.firstName,
+            lastName:      req.session.user.lastName,
+            email:         req.session.user.email,
+            discount:      discount
+        });
+    } catch (err) {
+        console.error("[check-auth] Error fetching company discount:", err);
+        // Still return the authenticated state even if the discount lookup fails
+        res.status(200).json({
+            authenticated: true,
+            firstName:     req.session.user.firstName,
+            lastName:      req.session.user.lastName,
+            email:         req.session.user.email,
+            discount:      0
+        });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
 // MODIFIED: Impersonate Link Generation Endpoint (Admin side)
 app.get("/admin/impersonate/:userId", requireAdmin, async (req, res) => {
     const { userId } = req.params;
