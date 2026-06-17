@@ -869,6 +869,38 @@ app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
     }
 });
 
+// Endpoint to return configurator logo options parsed from logos.php.
+// The admin dashboard uses this to keep its Configurator Logo dropdown
+// in sync with logos.php automatically — no hardcoded list needed.
+app.get("/admin/logo-options", requireAdmin, async (req, res) => {
+    try {
+        // logos.php lives alongside server.js in the project root.
+        const logosPath = path.join(__dirname, 'logos.php');
+        const html = await fs.readFile(logosPath, 'utf8');
+
+        // Extract every <option> inside the DISTRIBUTORS/OEM's optgroup.
+        // Match the optgroup block first, then parse individual options within it.
+        const distMatch = html.match(/id=['"]Distributors['"][^>]*>([\s\S]*?)<\/optgroup>/i);
+        if (!distMatch) {
+            return res.json([]);
+        }
+
+        const optionRegex = /<option[^>]+value=['"]([^'"]+)['"][^>]*>([^<]*)<\/option>/gi;
+        const options = [];
+        let m;
+        while ((m = optionRegex.exec(distMatch[1])) !== null) {
+            const code = m[1].split(';')[0].trim();  // first segment before ';'
+            const label = m[2].trim();
+            if (code) options.push({ value: code, label: label });
+        }
+
+        res.json(options);
+    } catch (err) {
+        console.error('[GET /admin/logo-options] Failed to read logos.php:', err.message);
+        res.status(500).json({ error: 'Could not load logo options' });
+    }
+});
+
 // Endpoint to generate a login report for a date range
 app.get("/admin/login-report", requireAdmin, async (req, res) => {
     const { startDate, endDate } = req.query;
