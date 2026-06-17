@@ -718,26 +718,29 @@ app.get("/check-auth", async (req, res) => {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [companies] = await conn.execute(
-            "SELECT discount FROM companies WHERE id = ?",
+            "SELECT discount, logo FROM companies WHERE id = ?",
             [req.session.user.companyId]
         );
-        const discount = parseFloat(companies[0]?.discount) || 0;
+        const discount  = parseFloat(companies[0]?.discount) || 0;
+        const logoCode  = companies[0]?.logo || '';   // configurator logo code, e.g. "Dixon"
         res.status(200).json({
             authenticated: true,
             firstName:     req.session.user.firstName,
             lastName:      req.session.user.lastName,
             email:         req.session.user.email,
-            discount:      discount
+            discount:      discount,
+            logoCode:      logoCode
         });
     } catch (err) {
-        console.error("[check-auth] Error fetching company discount:", err);
-        // Still return the authenticated state even if the discount lookup fails
+        console.error("[check-auth] Error fetching company data:", err);
+        // Still return the authenticated state even if the lookup fails
         res.status(200).json({
             authenticated: true,
             firstName:     req.session.user.firstName,
             lastName:      req.session.user.lastName,
             email:         req.session.user.email,
-            discount:      0
+            discount:      0,
+            logoCode:      ''
         });
     } finally {
         if (conn) conn.end();
