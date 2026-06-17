@@ -2601,10 +2601,18 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         let formattedOrders = orders.map(order => {
             let parsedItems = [];
             console.log(`[GET /api/orders/:companyId] Raw items data for order ${order.id}:`, order.items);
-            // mysql2 driver automatically parses JSON columns, so no need for JSON.parse()
-            parsedItems = order.items; 
+            // mysql2 auto-parses JSON columns, but if the actual column type is TEXT it returns a
+            // string. Handle both cases defensively so items always ends up as an array.
+            if (Array.isArray(order.items)) {
+                parsedItems = order.items;
+            } else if (typeof order.items === 'string' && order.items.trim()) {
+                try { parsedItems = JSON.parse(order.items); } catch(e) {
+                    console.warn(`Items for order ${order.id} failed JSON.parse:`, e.message);
+                    parsedItems = [];
+                }
+            }
             if (!Array.isArray(parsedItems)) {
-                console.warn(`Items for order ${order.id} is not an array, received:`, parsedItems);
+                console.warn(`Items for order ${order.id} is not an array after parsing, received:`, parsedItems);
                 parsedItems = [];
             }
 
