@@ -718,11 +718,11 @@ app.get("/check-auth", async (req, res) => {
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [companies] = await conn.execute(
-            "SELECT discount, logo FROM companies WHERE id = ?",
+            "SELECT discount, logo, logo_code FROM companies WHERE id = ?",
             [req.session.user.companyId]
         );
         const discount  = parseFloat(companies[0]?.discount) || 0;
-        const logoCode  = companies[0]?.logo || '';   // configurator logo code, e.g. "Dixon"
+        const logoCode  = companies[0]?.logo_code || '';   // configurator logo code, e.g. "Dixon"
         res.status(200).json({
             authenticated: true,
             firstName:     req.session.user.firstName,
@@ -1517,7 +1517,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
 
 // MODIFIED: /edit-company endpoint
 app.post("/edit-company", requireAdmin, async (req, res) => {
-  const { id, name, address1, ap_email, website, city, state, zip, country, terms, discount, approved, denied, logo, notes } = req.body; // Added ap_email
+  const { id, name, address1, ap_email, website, city, state, zip, country, terms, discount, approved, denied, logo, logo_code, notes } = req.body; // Added ap_email
   console.log(`[POST /edit-company] Editing company ID: ${id}`);
   if (!id) {
     console.warn("[POST /edit-company] Company ID is required for update.");
@@ -1546,6 +1546,7 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
     if (terms !== undefined) { fieldsToUpdate.push("terms = ?"); values.push(terms); }
     if (discount !== undefined) { fieldsToUpdate.push("discount = ?"); values.push(discount); }
     if (logo !== undefined) { fieldsToUpdate.push("logo = ?"); values.push(logo); }
+    if (logo_code !== undefined) { fieldsToUpdate.push("logo_code = ?"); values.push(logo_code); }
     if (notes !== undefined) { fieldsToUpdate.push("notes = ?"); values.push(notes); }
     if (approved !== undefined) { fieldsToUpdate.push("approved = ?"); values.push(approved); }
     if (denied !== undefined) { fieldsToUpdate.push("denied = ?"); values.push(denied); }
@@ -1581,16 +1582,16 @@ app.post("/edit-company", requireAdmin, async (req, res) => {
 
 app.post('/add-company', requireAdmin, async (req, res) => {
   const {
-    name, logo, address1, city, state, zip, country, terms, discount
+    name, logo, logo_code, address1, city, state, zip, country, terms, discount
   } = req.body;
   console.log(`[POST /add-company] Adding new company: ${name}`);
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
     const [result] = await conn.execute(`
-      INSERT INTO companies (name, logo, address1, city, state, zip, country, terms, discount, notes, approved, denied)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)
-    `, [name, logo || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '']);
+      INSERT INTO companies (name, logo, logo_code, address1, city, state, zip, country, terms, discount, notes, approved, denied)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, FALSE)
+    `, [name, logo || '', logo_code || '', address1, city, state, zip, country || 'USA', terms || 'Net 30', discount || 0, '']);
     console.log(`[POST /add-company] Company ${name} created with ID: ${result.insertId}`);
     res.status(200).json({ message: "Company created", id: result.insertId });
   } catch (err) {
@@ -2839,6 +2840,7 @@ async function initializeDatabase() {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL UNIQUE,
                 logo VARCHAR(255),
+                logo_code VARCHAR(100),
                 address1 TEXT,
                 ap_email VARCHAR(255),
                 website VARCHAR(255),
@@ -2886,6 +2888,22 @@ async function initializeDatabase() {
             console.log("'website' column added to 'companies' table.");
         } else {
             console.log("'website' column already exists in 'companies' table.");
+        }
+
+        // Check if 'logo_code' column exists in 'companies' table before adding it
+        const [logoCodeColumnCheck] = await conn.execute(`
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies' AND COLUMN_NAME = 'logo_code';
+        `, [dbConnectionConfig.database]);
+
+        if (logoCodeColumnCheck.length === 0) {
+            await conn.execute(`
+                ALTER TABLE companies ADD COLUMN logo_code VARCHAR(100) AFTER logo;
+            `);
+            console.log("'logo_code' column added to 'companies' table.");
+        } else {
+            console.log("'logo_code' column already exists in 'companies' table.");
         }
 
         // Create 'users' table if not exists with foreign key
