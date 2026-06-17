@@ -872,11 +872,9 @@ app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
 // Endpoint to return configurator logo options parsed from logos.php.
 // The admin dashboard uses this to keep its Configurator Logo dropdown
 // in sync with logos.php automatically — no hardcoded list needed.
-app.get("/admin/logo-options", requireAdmin, async (req, res) => {
-    // EMBEDDED logo options parsed from logos.php (DISTRIBUTORS/OEM's optgroup).
-    // If logos.php is present on the server, we re-parse it dynamically so any
-    // additions are picked up immediately. If not, we fall back to this static list.
-    const EMBEDDED_LOGO_OPTIONS = [
+// Embedded logo options — fallback used when chicagostainless.com/logos.php is unreachable.
+// Update logos.php on your website and the live fetch will pick it up automatically.
+const EMBEDDED_LOGO_OPTIONS = [
   { value: "CSE", label: "CSE Logo" },
   { value: "TEST", label: "TEST" },
   { value: "NO LOGO", label: "No Logo" },
@@ -1036,11 +1034,17 @@ app.get("/admin/logo-options", requireAdmin, async (req, res) => {
   { value: "ZMT", label: "ZM Technologies" }
 ];
 
+app.get("/admin/logo-options", requireAdmin, async (req, res) => {
+    // Fetch logos.php directly from the live website so any additions are
+    // picked up automatically — no need to redeploy server.js or Render.
     try {
-        const logosPath = path.join(__dirname, 'logos.php');
-        const html = await fs.readFile(logosPath, 'utf8');
+        const response = await fetch('https://www.chicagostainless.com/logos.php');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const html = await response.text();
+
         const distMatch = html.match(/id=['"]Distributors['"][^>]*>([\s\S]*?)<\/optgroup>/i);
         if (!distMatch) return res.json(EMBEDDED_LOGO_OPTIONS);
+
         const optionRegex = /<option[^>]+value=['"]([^'"]+)['"][^>]*>([^<]*)<\/option>/gi;
         const options = [];
         let m;
@@ -1049,11 +1053,11 @@ app.get("/admin/logo-options", requireAdmin, async (req, res) => {
             const label = m[2].trim();
             if (code) options.push({ value: code, label: label });
         }
-        console.log('[GET /admin/logo-options] Loaded ' + options.length + ' options from logos.php');
+        console.log(`[GET /admin/logo-options] Loaded ${options.length} options from chicagostainless.com/logos.php`);
         return res.json(options);
     } catch (err) {
-        // logos.php not found or unreadable — serve the embedded list
-        console.warn('[GET /admin/logo-options] logos.php not available, using embedded list:', err.message);
+        // Network error or site down — fall back to the embedded list
+        console.warn('[GET /admin/logo-options] Could not fetch logos.php from website, using embedded fallback:', err.message);
         return res.json(EMBEDDED_LOGO_OPTIONS);
     }
 });
