@@ -873,31 +873,188 @@ app.get("/admin/user-logins/:userId", requireAdmin, async (req, res) => {
 // The admin dashboard uses this to keep its Configurator Logo dropdown
 // in sync with logos.php automatically — no hardcoded list needed.
 app.get("/admin/logo-options", requireAdmin, async (req, res) => {
+    // EMBEDDED logo options parsed from logos.php (DISTRIBUTORS/OEM's optgroup).
+    // If logos.php is present on the server, we re-parse it dynamically so any
+    // additions are picked up immediately. If not, we fall back to this static list.
+    const EMBEDDED_LOGO_OPTIONS = [
+  { value: "CSE", label: "CSE Logo" },
+  { value: "TEST", label: "TEST" },
+  { value: "NO LOGO", label: "No Logo" },
+  { value: "A&", label: "A&B Process Systems" },
+  { value: "APG", label: "Adcor Packaging (APG)" },
+  { value: "ADVANCED PROCESS", label: "Advanced Process Solutions" },
+  { value: "APS", label: "Advanced Process Systems" },
+  { value: "APT", label: "Advanced Process Technologies" },
+  { value: "ALLTECH", label: "Alltech Supply" },
+  { value: "AMPCO", label: "Ampco Pumps Company" },
+  { value: "APOTEK", label: "Apotek Solutions" },
+  { value: "APPLIED", label: "Applied Industrial Technologies" },
+  { value: "APV", label: "APV" },
+  { value: "ARMOR", label: "Armor Industries" },
+  { value: "ARROW", label: "Arrow Process Systems" },
+  { value: "AUBURN", label: "Auburn Mechanical" },
+  { value: "AUSTENITEX", label: "Austenitex" },
+  { value: "ATS", label: "Automated Technical Services" },
+  { value: "AXIFLOW", label: "Axiflow Technologies" },
+  { value: "BARNEYS", label: "Barney's Pumps" },
+  { value: "BARNUM", label: "Barnum Equipment" },
+  { value: "BEECO", label: "Bykowski Equipment (BEECO)" },
+  { value: "BERGEN", label: "Bergen Industrial Supply" },
+  { value: "BETHEL", label: "Bethel Engineering" },
+  { value: "BIO", label: "Bio Integrity" },
+  { value: "BMB", label: "BMB Process & Filtration" },
+  { value: "BROWER", label: "Brower Equipment" },
+  { value: "BRUNS BROS", label: "Bruns Brothers Process Equipment" },
+  { value: "CASELLA", label: "Casella Process Solutions" },
+  { value: "CIP", label: "Centerline Industrial Products" },
+  { value: "CIS", label: "Central Industrial Sales" },
+  { value: "CSI", label: "Central States Industrial (CSI)" },
+  { value: "CENTREX", label: "Centrex Technical Sales" },
+  { value: "CFR", label: "Complete Filtration Resources" },
+  { value: "CSS", label: "Complete Separator Services" },
+  { value: "CORROSION", label: "Corrosion Fulid Products" },
+  { value: "CPE", label: "CPE Systems" },
+  { value: "CRANE", label: "Crane Engineering" },
+  { value: "CUSTOM FAB", label: "Custom Fabricating & Repair" },
+  { value: "DEC", label: "Dairy Engineering Company" },
+  { value: "DEJONG", label: "DeJong Consulting" },
+  { value: "DIXON", label: "Dixon Sanitary" },
+  { value: "DOBBINS", label: "Dobbins Company" },
+  { value: "DR TECH", label: "Dr Tech" },
+  { value: "DUVA SANITARY", label: "Duva Sanitary" },
+  { value: "ELEVATED AUTOMATION", label: "Elevated Automation" },
+  { value: "ENERGYWATER", label: "Energy Water Solutions" },
+  { value: "ECE", label: "Environmental Compliance Equipment" },
+  { value: "ERDMANN", label: "Erdmann Corporation" },
+  { value: "EPS", label: "Extreme Process Solutions" },
+  { value: "EYERS GROVE", label: "Eyers Grove Management Group" },
+  { value: "F&", label: "F & H Food Equipment" },
+  { value: "FESINTL", label: "FESINTL Corp" },
+  { value: "F&", label: "Filter & Water Technologies" },
+  { value: "FPS", label: "Filter Process & Supply" },
+  { value: "FLUID GAUGE", label: "Fluid Gauge Company" },
+  { value: "FRISTAM", label: "Fristam Pumps" },
+  { value: "GALLOUP", label: "Galloup" },
+  { value: "GMS", label: "GMS Metal Works" },
+  { value: "GRAM", label: "Gram Equipment" },
+  { value: "GRAYCO", label: "GrayCo Stainless" },
+  { value: "H2O", label: "H2O Solutions" },
+  { value: "H&", label: "H&H Extraction Solutions" },
+  { value: "HARCO", label: "Harco Enterprises" },
+  { value: "HARRINGTON PROCESS", label: "Harrington Process" },
+  { value: "HARVILL", label: "Harvill Industries" },
+  { value: "HERITAGE", label: "Heritage Equipment" },
+  { value: "HCS", label: "High Country Stainless" },
+  { value: "HIGHLAND", label: "Highland Equipment" },
+  { value: "HAT", label: "Holland Applied Technologies" },
+  { value: "IDEAL", label: "Ideal Process Solutions" },
+  { value: "IPM", label: "IPM Panama" },
+  { value: "IPS", label: "Industrial Pipe & Supply" },
+  { value: "INFINI-MIX", label: "Infini-Mix" },
+  { value: "JADLER", label: "Jadler Industries" },
+  { value: "KELLER", label: "Keller Technologies" },
+  { value: "KODIAK", label: "Kodiak Controls" },
+  { value: "KOSS", label: "Koss Industrial" },
+  { value: "KPGNA", label: "Krones Process Group North America" },
+  { value: "LPS", label: "Lake Process Systems" },
+  { value: "LIGHTHOUSE", label: "Lighthouse Process" },
+  { value: "LLANES", label: "Llanes Barreto" },
+  { value: "MGN", label: "M.G. Newell" },
+  { value: "MAC PASS", label: "Mac Pass" },
+  { value: "MANE", label: "Mane" },
+  { value: "MAREL", label: "Marel" },
+  { value: "MARINOS", label: "Marino's & Company" },
+  { value: "MARTINBROS", label: "Martin Brothers" },
+  { value: "MCKENNA", label: "McKenna Engineering & Equipment" },
+  { value: "MEMBRANE", label: "Membrane Systems Specialists" },
+  { value: "Mohawk", label: "Mohawk Technology" },
+  { value: "NATIONAL", label: "National Utilities" },
+  { value: "N-J", label: "Nelson-Jameson" },
+  { value: "NETHER", label: "Nether Industries" },
+  { value: "NIPR", label: "NIPR Sanitary" },
+  { value: "NPP", label: "Northland Process Piping" },
+  { value: "NSI", label: "NSI Newlands" },
+  { value: "NU-CON", label: "Nu-Con Equipment" },
+  { value: "MUELLER", label: "Paul Mueller" },
+  { value: "PEISA", label: "Proyectos e Instrumentos, S A de C V" },
+  { value: "PVFCO", label: "Pipe Valve & Fitting Company" },
+  { value: "PPT", label: "PPT Florida" },
+  { value: "PGE", label: "Preferred Global Equipment" },
+  { value: "PROSALES", label: "Pro Sales" },
+  { value: "PSI", label: "Process Solutions & Integration" },
+  { value: "PTI", label: "Process Technologies" },
+  { value: "PROCOMP", label: "ProComp" },
+  { value: "PRYDE", label: "Pryde Measurement" },
+  { value: "PURE SUPPLY", label: "Pure Supply" },
+  { value: "QSI", label: "Quality Stainless" },
+  { value: "QTS", label: "Quality Tank Solutions" },
+  { value: "QUALTECH", label: "Qualtech Distribution" },
+  { value: "QUENTIN", label: "Quentin Corperation" },
+  { value: "RMS", label: "R. Mueller Service & Equipment" },
+  { value: "RACE", label: "Race Company" },
+  { value: "RMS", label: "Rocky Mountain Stainless" },
+  { value: "RODEM", label: "Rodem" },
+  { value: "RSM", label: "RS Mechanical" },
+  { value: "RSP", label: "RSP Design" },
+  { value: "SSI", label: "Samuelson Sales" },
+  { value: "SANI-MATIC", label: "Sani-Matic" },
+  { value: "SANITUBE", label: "Sanitube" },
+  { value: "SIPCO", label: "Sanitary & Industrial Products" },
+  { value: "SEK", label: "Sanitary Korea" },
+  { value: "SEMI BULK", label: "Semi-Bulk" },
+  { value: "SSS", label: "Service Supply System" },
+  { value: "SILVERLINE", label: "Silverline" },
+  { value: "SMITHFIELD", label: "Smithfield BioScience" },
+  { value: "SONIC", label: "Sonic Corporation" },
+  { value: "SOUTHERN", label: "Southern Piping Solutions" },
+  { value: "SPS", label: "Specialty Process Systems" },
+  { value: "SPX", label: "SPX Flow" },
+  { value: "STAIN DIST", label: "Stainless Distributors" },
+  { value: "SEC", label: "Stainless Equipment" },
+  { value: "SPE", label: "Stainless Process Equipment" },
+  { value: "SST", label: "Stainless Supply Technology" },
+  { value: "STATCO", label: "Statco Engineering & Fabricators" },
+  { value: "STEAM", label: "Steam Engineering" },
+  { value: "S&", label: "Steel & O'Brien Manufacturing" },
+  { value: "TTS", label: "Team Technical Services" },
+  { value: "TELTRU", label: "Tel-Tru Manufacturing" },
+  { value: "TEMP PRESS", label: "Temp-Press" },
+  { value: "TETRA PAK", label: "Tetra Pak" },
+  { value: "TSI", label: "Todd Street" },
+  { value: "TRINOVA", label: "Trinova" },
+  { value: "TRIPLEX", label: "Triplex Sales" },
+  { value: "TWINCO", label: "Twinco" },
+  { value: "US GAUGE", label: "U.S. Gauge" },
+  { value: "VAF", label: "VA Filtration" },
+  { value: "WHC", label: "W.H. Cooke & Company" },
+  { value: "WACCO", label: "Wacco" },
+  { value: "WAYLAND", label: "Wayland Industries" },
+  { value: "WRF", label: "White River Fabrication" },
+  { value: "WILCO", label: "Wilco Equipment" },
+  { value: "WINTERS", label: "Winters Instruments" },
+  { value: "WPS", label: "Wright Process Systems" },
+  { value: "ZMT", label: "ZM Technologies" }
+];
+
     try {
-        // logos.php lives alongside server.js in the project root.
         const logosPath = path.join(__dirname, 'logos.php');
         const html = await fs.readFile(logosPath, 'utf8');
-
-        // Extract every <option> inside the DISTRIBUTORS/OEM's optgroup.
-        // Match the optgroup block first, then parse individual options within it.
         const distMatch = html.match(/id=['"]Distributors['"][^>]*>([\s\S]*?)<\/optgroup>/i);
-        if (!distMatch) {
-            return res.json([]);
-        }
-
+        if (!distMatch) return res.json(EMBEDDED_LOGO_OPTIONS);
         const optionRegex = /<option[^>]+value=['"]([^'"]+)['"][^>]*>([^<]*)<\/option>/gi;
         const options = [];
         let m;
         while ((m = optionRegex.exec(distMatch[1])) !== null) {
-            const code = m[1].split(';')[0].trim();  // first segment before ';'
+            const code = m[1].split(';')[0].trim();
             const label = m[2].trim();
             if (code) options.push({ value: code, label: label });
         }
-
-        res.json(options);
+        console.log('[GET /admin/logo-options] Loaded ' + options.length + ' options from logos.php');
+        return res.json(options);
     } catch (err) {
-        console.error('[GET /admin/logo-options] Failed to read logos.php:', err.message);
-        res.status(500).json({ error: 'Could not load logo options' });
+        // logos.php not found or unreadable — serve the embedded list
+        console.warn('[GET /admin/logo-options] logos.php not available, using embedded list:', err.message);
+        return res.json(EMBEDDED_LOGO_OPTIONS);
     }
 });
 
