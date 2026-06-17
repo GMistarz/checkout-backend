@@ -1504,7 +1504,7 @@ app.get("/companies", requireAdmin, async (req, res) => {
   let conn;
   try {
     conn = await mysql.createConnection(dbConnectionConfig);
-    const [companies] = await conn.execute("SELECT id, name, logo, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
+    const [companies] = await conn.execute("SELECT id, name, logo, logo_code, address1, ap_email, website, city, state, zip, country, terms, discount, notes, approved, denied, created_at FROM companies ORDER BY name ASC"); // Added ap_email
     console.log(`[GET /companies] Found ${companies.length} companies.`);
     res.json(companies);
   } catch (err) {
