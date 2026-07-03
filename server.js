@@ -214,6 +214,7 @@ const csrfProtection = (req, res, next) => {
         '/add-company',
         '/delete-company',
         '/delete-user',
+        '/admin/delete-abandoned-cart',
         '/admin/settings',
         '/admin/send-approval-email',
         '/admin/impersonate',
