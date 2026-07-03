@@ -1255,6 +1255,7 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
             if (!Array.isArray(items)) items = [];
             const total = items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 0)), 0);
             return {
+                userId:      row.user_id,
                 date:        row.updated_at,
                 companyName: row.company_name || '',
                 userName:    `${row.first_name || ''} ${row.last_name || ''}`.trim(),
@@ -1270,6 +1271,29 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
     } catch (err) {
         console.error("Error generating abandoned carts report:", err);
         res.status(500).json({ error: "Failed to generate abandoned carts report" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+app.post("/admin/delete-abandoned-cart", requireAdmin, async (req, res) => {
+    const { userId } = req.body;
+    console.log(`[POST /admin/delete-abandoned-cart] Deleting cart for user ID: ${userId}`);
+    if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+    }
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [result] = await conn.execute("DELETE FROM user_carts WHERE user_id = ?", [userId]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Cart not found" });
+        }
+        console.log(`[POST /admin/delete-abandoned-cart] Deleted cart for user ID: ${userId}`);
+        res.json({ message: "Cart deleted" });
+    } catch (err) {
+        console.error("Error deleting abandoned cart:", err);
+        res.status(500).json({ error: "Failed to delete cart" });
     } finally {
         if (conn) conn.end();
     }
