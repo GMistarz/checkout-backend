@@ -545,7 +545,7 @@ async function sendExistingCompanyUserNotificationEmail(companyName, userEmail, 
                     <li><strong>Phone:</strong> ${phone || 'N/A'}</li>
                 </ul>
                 <p>This user has been automatically granted access under the existing company account. No approval is necessary for the company itself.</p>
-                <p>Thank Thank you.</p>
+                <p>Thank you.</p>
             `,
         };
 
@@ -2235,7 +2235,7 @@ app.post("/admin/send-approval-email", requireAdmin, async (req, res) => {
                 <p>You can now log in and place orders.</p>
                 <p>Login Page: <a href="${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}">${process.env.FRONTEND_URL || 'YOUR_FRONTEND_URL_HERE'}</a></p>
                 <p>If you have any questions, please do not hesitate to contact us.</p>
-                <p>Thank Thank you for choosing Chicago Stainless Equipment, Inc.</p>
+                <p>Thank you for choosing Chicago Stainless Equipment, Inc.</p>
                 <p>Sincerely,</p>
                 <p>The Chicago Stainless Equipment Team</p>
             `,
