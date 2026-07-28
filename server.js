@@ -152,6 +152,15 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.set("trust proxy", 1); // Essential for 'secure: true' cookies when behind a proxy/load balancer like Render
 
+// req.ip (and X-Forwarded-For) only reflects the last hop before Render's proxy,
+// which — since the site sits behind Cloudflare — is a Cloudflare edge node, not
+// the actual visitor. Cloudflare sets CF-Connecting-IP to the true client IP on
+// every request it proxies, so prefer that; fall back to req.ip for any traffic
+// that reaches the server directly (e.g. local/dev, or if Cloudflare is ever removed).
+function getClientIp(req) {
+    return req.headers['cf-connecting-ip'] || req.ip || req.connection.remoteAddress;
+}
+
 app.use(session({
   secret: process.env.SESSION_SECRET, // Must be set as an environment variable — no hardcoded fallback
   resave: false,
@@ -225,7 +234,7 @@ const csrfProtection = (req, res, next) => {
     const sessionToken = req.session.csrfToken;
     const headerToken = req.headers['x-csrf-token'];
     if (!sessionToken || !headerToken || sessionToken !== headerToken) {
-        console.warn(`[CSRF] Token mismatch for ${req.method} ${req.path}. IP: ${req.ip}`);
+        console.warn(`[CSRF] Token mismatch for ${req.method} ${req.path}. IP: ${getClientIp(req)}`);
         return res.status(403).json({ error: "Invalid or missing CSRF token." });
     }
     next();
@@ -670,7 +679,7 @@ app.post("/admin-login", loginLimiter, async (req, res) => {
         // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
         const userEmailLower = user.email.toLowerCase();
         if (!isExcludedFromLogging(userEmailLower)) {
-            const ip = req.ip || req.connection.remoteAddress;
+            const ip = getClientIp(req);
             await conn.execute(
                 'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
                 [user.id, ip]
@@ -1330,7 +1339,7 @@ app.post("/login", loginLimiter, async (req, res) => {
     // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
     const userEmailLower = user.email.toLowerCase();
     if (!isExcludedFromLogging(userEmailLower)) {
-        const ip = req.ip || req.connection.remoteAddress;
+        const ip = getClientIp(req);
         await conn.execute(
             'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
             [user.id, ip]
