@@ -228,6 +228,7 @@ const csrfProtection = (req, res, next) => {
         '/admin/send-approval-email',
         '/admin/impersonate',
         '/api/cart',
+        '/api/quotes',
     ];
     if (csrfExemptPaths.some(p => req.path.startsWith(p))) return next();
 
