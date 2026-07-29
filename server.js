@@ -2914,10 +2914,18 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
         // --- END PART NUMBER FILTERING IN NODE.JS ---
 
         // --- SORTING ---
-        // Optional ?sortBy=date|poNumber|total&sortDir=asc|desc. Runs after filtering and before
-        // both the CSV export and pagination below, so both respect the requested sort order.
-        // Without ?sortBy, the original SQL ORDER BY (most recent first) is left untouched.
-        const sortableFields = { date: 'date', poNumber: 'poNumber', total: 'totalPrice' };
+        // Optional ?sortBy=date|poNumber|total|shipToCompany|orderedBy&sortDir=asc|desc. Runs after
+        // filtering and before both the CSV export and pagination below, so both respect the
+        // requested sort order. Without ?sortBy, the original SQL ORDER BY (most recent first)
+        // is left untouched.
+        const sortableFields = {
+            date: 'date',
+            poNumber: 'poNumber',
+            total: 'totalPrice',
+            shipToCompany: 'shipToCompanyName',
+            orderedBy: 'orderedByName'
+        };
+        const textSortFields = new Set(['poNumber', 'shipToCompanyName', 'orderedByName']);
         if (req.query.sortBy && sortableFields[req.query.sortBy]) {
             const field = sortableFields[req.query.sortBy];
             const dir = req.query.sortDir === 'asc' ? 1 : -1;
@@ -2926,7 +2934,7 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 if (field === 'date') {
                     av = new Date(av).getTime();
                     bv = new Date(bv).getTime();
-                } else if (field === 'poNumber') {
+                } else if (textSortFields.has(field)) {
                     av = (av || '').toString().toLowerCase();
                     bv = (bv || '').toString().toLowerCase();
                 }
