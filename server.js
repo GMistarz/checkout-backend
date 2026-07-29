@@ -2936,7 +2936,10 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 }
             });
 
-            const csvContent = lines.join('\r\n');
+            // Prepend a UTF-8 BOM so Excel (which doesn't auto-detect UTF-8 for plain .csv files)
+            // correctly renders non-ASCII characters like ½ and ° instead of mangling them
+            // (e.g. ½ showing up as Â½).
+            const csvContent = '\uFEFF' + lines.join('\r\n');
             const filename = `order-history-${companyId}-${new Date().toISOString().slice(0, 10)}.csv`;
             res.setHeader('Content-Type', 'text/csv; charset=utf-8');
             res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
