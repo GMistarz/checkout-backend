@@ -3108,6 +3108,173 @@ app.get("/api/carts/all", requireAdmin, async (req, res) => {
     }
 });
 
+// ─── Saved Quotes Routes ─────────────────────────────────────────────────────
+// Lets a logged-in customer save the current cart as a named quote to come back
+// to later, separate from the single active cart in user_carts. Quotes are
+// scoped to the individual user (not shared across everyone at the company).
+
+// GET /api/quotes — list the current user's saved quotes (summary only, no line items)
+app.get("/api/quotes", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(
+            "SELECT id, quote_name, cart_data, created_at, updated_at FROM saved_quotes WHERE user_id = ? ORDER BY updated_at DESC",
+            [userId]
+        );
+
+        const quotes = rows.map(row => {
+            let items = row.cart_data;
+            if (typeof items === 'string') {
+                try { items = JSON.parse(items); } catch (e) { items = []; }
+            }
+            if (!Array.isArray(items)) items = [];
+
+            let itemCount = 0, totalPrice = 0;
+            items.forEach(item => {
+                const qty = parseFloat(item.quantity) || 0;
+                const price = parseFloat(item.price) || 0;
+                itemCount += qty;
+                totalPrice += qty * price;
+            });
+
+            return {
+                id: row.id,
+                name: row.quote_name,
+                itemCount,
+                totalPrice,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+            };
+        });
+
+        res.json(quotes);
+    } catch (err) {
+        console.error("[GET /api/quotes] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve saved quotes" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// POST /api/quotes — save the current cart contents as a new named quote
+app.post("/api/quotes", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const companyId = req.session.user.companyId;
+    const { name, cartData } = req.body;
+
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+        return res.status(400).json({ error: "Please enter a name for this quote." });
+    }
+    if (!Array.isArray(cartData) || cartData.length === 0) {
+        return res.status(400).json({ error: "Cannot save an empty cart as a quote." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [result] = await conn.execute(
+            "INSERT INTO saved_quotes (user_id, company_id, quote_name, cart_data) VALUES (?, ?, ?, ?)",
+            [userId, companyId, trimmedName, JSON.stringify(cartData)]
+        );
+        console.log(`[POST /api/quotes] Saved quote "${trimmedName}" (id ${result.insertId}) for user ID ${userId}.`);
+        res.json({ success: true, id: result.insertId });
+    } catch (err) {
+        console.error("[POST /api/quotes] Error:", err);
+        res.status(500).json({ error: "Failed to save quote" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// GET /api/quotes/:id — full details of one saved quote (for loading into the cart)
+app.get("/api/quotes/:id", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(
+            "SELECT id, quote_name, cart_data, created_at, updated_at FROM saved_quotes WHERE id = ? AND user_id = ?",
+            [id, userId]
+        );
+        if (!rows.length) {
+            return res.status(404).json({ error: "Quote not found." });
+        }
+        let items = rows[0].cart_data;
+        if (typeof items === 'string') {
+            try { items = JSON.parse(items); } catch (e) { items = []; }
+        }
+        if (!Array.isArray(items)) items = [];
+
+        res.json({
+            id: rows[0].id,
+            name: rows[0].quote_name,
+            cartData: items,
+            createdAt: rows[0].created_at,
+            updatedAt: rows[0].updated_at
+        });
+    } catch (err) {
+        console.error("[GET /api/quotes/:id] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve quote" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// PUT /api/quotes/:id — rename a saved quote
+app.put("/api/quotes/:id", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    const trimmedName = (req.body.name || '').trim();
+    if (!trimmedName) {
+        return res.status(400).json({ error: "Please enter a name for this quote." });
+    }
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [result] = await conn.execute(
+            "UPDATE saved_quotes SET quote_name = ? WHERE id = ? AND user_id = ?",
+            [trimmedName, id, userId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Quote not found." });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[PUT /api/quotes/:id] Error:", err);
+        res.status(500).json({ error: "Failed to rename quote" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// DELETE /api/quotes/:id — delete a saved quote
+app.delete("/api/quotes/:id", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [result] = await conn.execute(
+            "DELETE FROM saved_quotes WHERE id = ? AND user_id = ?",
+            [id, userId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Quote not found." });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[DELETE /api/quotes/:id] Error:", err);
+        res.status(500).json({ error: "Failed to delete quote" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+// --- END Saved Quotes Routes ---
+
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
@@ -3269,6 +3436,23 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'user_carts' table checked/created.");
+
+        // Create 'saved_quotes' table if not exists — named, saved carts a customer can
+        // come back to later, separate from the single active cart in user_carts.
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS saved_quotes (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                company_id INT NOT NULL,
+                quote_name VARCHAR(255) NOT NULL,
+                cart_data JSON NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB;
+        `);
+        console.log("'saved_quotes' table checked/created.");
 
         // Create 'shipto_addresses' table if not exists with foreign key
         await conn.execute(`
