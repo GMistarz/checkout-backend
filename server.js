@@ -2873,6 +2873,7 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 billingAddress: order.billingAddress,
                 shippingAddress: displayShippingAddress,
                 shippingAddressId: order.shippingAddressId,
+                shipToCompanyName: order.shipToAddressName || null, // Added for CSV export / display convenience
                 attn: order.attn,
                 tag: order.tag,
                 carrierAccount: order.carrierAccount,
@@ -2897,6 +2898,65 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             console.log(`[GET /api/orders/:companyId] Filtered down to ${formattedOrders.length} orders by part number.`);
         }
         // --- END PART NUMBER FILTERING IN NODE.JS ---
+
+        // --- CSV EXPORT ---
+        // Triggered with ?format=csv (in addition to any of the filters above). Exports every
+        // matching order (ignores pagination — an export should contain everything the current
+        // filters match), one row per line item, matching the shape of the on-screen table.
+        if (req.query.format === 'csv') {
+            const csvEscape = (value) => {
+                if (value === null || value === undefined) return '';
+                const str = String(value);
+                return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+            };
+
+            const header = ['PO Number', 'Order Date', 'Part Number', 'Description', 'Quantity', 'Unit Price', 'Line Total', 'Ship To Company', 'Ordered By'];
+            const lines = [header.map(csvEscape).join(',')];
+
+            formattedOrders.forEach(order => {
+                const dateStr = order.date ? new Date(order.date).toLocaleDateString('en-US') : '';
+                const shipTo = order.shipToCompanyName || '';
+                const orderedBy = order.orderedByName || '';
+
+                if (Array.isArray(order.items) && order.items.length > 0) {
+                    order.items.forEach(item => {
+                        const quantity = parseFloat(item.quantity) || 0;
+                        const storedLineTotal = parseFloat(item.lineTotal);
+                        const netPrice = parseFloat(item.netPrice) || 0;
+                        const lineTotal = !isNaN(storedLineTotal) ? storedLineTotal : (netPrice * quantity);
+                        const unitPrice = quantity > 0 ? (lineTotal / quantity) : netPrice;
+
+                        lines.push([
+                            order.poNumber, dateStr, item.partNo || '', item.description || '',
+                            quantity, unitPrice.toFixed(2), lineTotal.toFixed(2), shipTo, orderedBy
+                        ].map(csvEscape).join(','));
+                    });
+                } else {
+                    lines.push([order.poNumber, dateStr, '', '', 0, '0.00', '0.00', shipTo, orderedBy].map(csvEscape).join(','));
+                }
+            });
+
+            const csvContent = lines.join('\r\n');
+            const filename = `order-history-${companyId}-${new Date().toISOString().slice(0, 10)}.csv`;
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            return res.status(200).send(csvContent);
+        }
+        // --- END CSV EXPORT ---
+
+        // --- OPTIONAL PAGINATION ---
+        // Only kicks in when the caller explicitly asks for a page (via ?page=&pageSize=).
+        // Without those params this endpoint keeps returning the full array exactly as before,
+        // so any other existing caller (e.g. the admin dashboard) is unaffected.
+        const page = parseInt(req.query.page, 10);
+        const pageSize = parseInt(req.query.pageSize, 10);
+        if (page && pageSize) {
+            const totalCount = formattedOrders.length;
+            const start = (page - 1) * pageSize;
+            const pageOrders = formattedOrders.slice(start, start + pageSize);
+            return res.json({ orders: pageOrders, totalCount, page, pageSize });
+        }
+        // --- END OPTIONAL PAGINATION ---
 
         res.json(formattedOrders);
     } catch (err) {
