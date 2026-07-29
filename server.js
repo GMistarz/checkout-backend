@@ -2862,12 +2862,25 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
                 displayShippingAddress = `${order.shipToAddressName}\n${order.shipToAddress1}\n${order.shipToAddressCity}, ${order.shipToAddressState} ${order.shipToAddressZip} ${order.shipToAddressCountry}`;
             }
 
+            // Compute the order's total from its line items — used for the "Total Price"
+            // column sort below (there's no raw total column on the orders table itself).
+            let orderTotalPrice = 0;
+            if (Array.isArray(parsedItems)) {
+                parsedItems.forEach(item => {
+                    const qty = parseFloat(item.quantity) || 0;
+                    const storedLineTotal = parseFloat(item.lineTotal);
+                    const netPrice = parseFloat(item.netPrice) || 0;
+                    orderTotalPrice += !isNaN(storedLineTotal) ? storedLineTotal : (netPrice * qty);
+                });
+            }
+
             return {
                 id: order.id,
                 poNumber: order.poNumber,
                 shippingMethod: order.shippingMethod,
                 items: parsedItems,
                 date: order.date,
+                totalPrice: orderTotalPrice, // Added for column sorting / display convenience
                 orderedByEmail: order.orderedByEmail,
                 orderedByPhone: order.orderedByPhone,
                 orderedByName: order.orderedByName,
@@ -2899,6 +2912,30 @@ app.get("/api/orders/:companyId", authorizeCompanyAccess, async (req, res) => {
             console.log(`[GET /api/orders/:companyId] Filtered down to ${formattedOrders.length} orders by part number.`);
         }
         // --- END PART NUMBER FILTERING IN NODE.JS ---
+
+        // --- SORTING ---
+        // Optional ?sortBy=date|poNumber|total&sortDir=asc|desc. Runs after filtering and before
+        // both the CSV export and pagination below, so both respect the requested sort order.
+        // Without ?sortBy, the original SQL ORDER BY (most recent first) is left untouched.
+        const sortableFields = { date: 'date', poNumber: 'poNumber', total: 'totalPrice' };
+        if (req.query.sortBy && sortableFields[req.query.sortBy]) {
+            const field = sortableFields[req.query.sortBy];
+            const dir = req.query.sortDir === 'asc' ? 1 : -1;
+            formattedOrders.sort((a, b) => {
+                let av = a[field], bv = b[field];
+                if (field === 'date') {
+                    av = new Date(av).getTime();
+                    bv = new Date(bv).getTime();
+                } else if (field === 'poNumber') {
+                    av = (av || '').toString().toLowerCase();
+                    bv = (bv || '').toString().toLowerCase();
+                }
+                if (av < bv) return -1 * dir;
+                if (av > bv) return 1 * dir;
+                return 0;
+            });
+        }
+        // --- END SORTING ---
 
         // --- CSV EXPORT ---
         // Triggered with ?format=csv (in addition to any of the filters above). Exports every
@@ -3225,20 +3262,47 @@ app.get("/api/quotes/:id", requireAuth, async (req, res) => {
     }
 });
 
-// PUT /api/quotes/:id — rename a saved quote
+// PUT /api/quotes/:id — rename a saved quote and/or update its saved items.
+// Backward-compatible: a request with only { name } still just renames, exactly as before.
+// A request with { cartData } (with or without name) also updates the saved line items —
+// this is what the "Edit" flow in the Saved Carts list uses.
 app.put("/api/quotes/:id", requireAuth, async (req, res) => {
     const userId = req.session.user.id;
     const { id } = req.params;
-    const trimmedName = (req.body.name || '').trim();
-    if (!trimmedName) {
-        return res.status(400).json({ error: "Please enter a name for this quote." });
+    const { name, cartData } = req.body;
+
+    const updates = [];
+    const values = [];
+
+    if (name !== undefined) {
+        const trimmedName = (name || '').trim();
+        if (!trimmedName) {
+            return res.status(400).json({ error: "Please enter a name for this quote." });
+        }
+        updates.push("quote_name = ?");
+        values.push(trimmedName);
     }
+
+    if (cartData !== undefined) {
+        if (!Array.isArray(cartData) || cartData.length === 0) {
+            return res.status(400).json({ error: "A saved cart must have at least one item." });
+        }
+        updates.push("cart_data = ?");
+        values.push(JSON.stringify(cartData));
+    }
+
+    if (updates.length === 0) {
+        return res.status(400).json({ error: "Nothing to update." });
+    }
+
+    values.push(id, userId);
+
     let conn;
     try {
         conn = await mysql.createConnection(dbConnectionConfig);
         const [result] = await conn.execute(
-            "UPDATE saved_quotes SET quote_name = ? WHERE id = ? AND user_id = ?",
-            [trimmedName, id, userId]
+            `UPDATE saved_quotes SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`,
+            values
         );
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: "Quote not found." });
@@ -3246,7 +3310,7 @@ app.put("/api/quotes/:id", requireAuth, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error("[PUT /api/quotes/:id] Error:", err);
-        res.status(500).json({ error: "Failed to rename quote" });
+        res.status(500).json({ error: "Failed to update quote" });
     } finally {
         if (conn) conn.end();
     }
