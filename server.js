@@ -229,6 +229,7 @@ const csrfProtection = (req, res, next) => {
         '/admin/impersonate',
         '/api/cart',
         '/api/quotes',
+        '/api/favorites',
     ];
     if (csrfExemptPaths.some(p => req.path.startsWith(p))) return next();
 
