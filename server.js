@@ -3349,6 +3349,91 @@ app.delete("/api/quotes/:id", requireAuth, async (req, res) => {
 });
 // --- END Saved Quotes Routes ---
 
+// ─── Favorite Parts Routes ───────────────────────────────────────────────────
+// A lightweight, per-user "quick reorder" bookmark list — separate from saved
+// quotes (which snapshot a whole cart). Deliberately stores no price: adding a
+// favorite back to the cart should always re-price it live via origin_url on
+// the configurator, not reuse a number that may be stale by the time it's used.
+
+// GET /api/favorites — list the current user's favorited parts
+app.get("/api/favorites", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [rows] = await conn.execute(
+            "SELECT id, part_no, description, origin_url, created_at FROM favorite_parts WHERE user_id = ? ORDER BY created_at DESC",
+            [userId]
+        );
+        res.json(rows.map(row => ({
+            id: row.id,
+            partNo: row.part_no,
+            description: row.description,
+            originUrl: row.origin_url,
+            createdAt: row.created_at
+        })));
+    } catch (err) {
+        console.error("[GET /api/favorites] Error:", err);
+        res.status(500).json({ error: "Failed to retrieve favorite parts" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// POST /api/favorites — add a part to favorites (or refresh its description/origin_url
+// if it's already favorited — re-favoriting an existing part is a no-op error, not a duplicate row)
+app.post("/api/favorites", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { partNo, description, originUrl } = req.body;
+
+    const trimmedPartNo = (partNo || '').trim();
+    if (!trimmedPartNo) {
+        return res.status(400).json({ error: "A part number is required to add a favorite." });
+    }
+
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        await conn.execute(
+            `INSERT INTO favorite_parts (user_id, part_no, description, origin_url)
+             VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE description = VALUES(description), origin_url = VALUES(origin_url)`,
+            [userId, trimmedPartNo, description || null, originUrl || null]
+        );
+        console.log(`[POST /api/favorites] Favorited part "${trimmedPartNo}" for user ID ${userId}.`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[POST /api/favorites] Error:", err);
+        res.status(500).json({ error: "Failed to add favorite" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+
+// DELETE /api/favorites/:id — remove a favorited part
+app.delete("/api/favorites/:id", requireAuth, async (req, res) => {
+    const userId = req.session.user.id;
+    const { id } = req.params;
+    let conn;
+    try {
+        conn = await mysql.createConnection(dbConnectionConfig);
+        const [result] = await conn.execute(
+            "DELETE FROM favorite_parts WHERE id = ? AND user_id = ?",
+            [id, userId]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Favorite not found." });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[DELETE /api/favorites/:id] Error:", err);
+        res.status(500).json({ error: "Failed to remove favorite" });
+    } finally {
+        if (conn) conn.end();
+    }
+});
+// --- END Favorite Parts Routes ---
+
 // --- General Routes and Server Start ---
 
 app.get("/", (req, res) => {
@@ -3527,6 +3612,25 @@ async function initializeDatabase() {
             ) ENGINE=InnoDB;
         `);
         console.log("'saved_quotes' table checked/created.");
+
+        // Create 'favorite_parts' table if not exists — a lightweight, per-user
+        // "quick reorder" bookmark list, separate from full saved carts. Deliberately
+        // does NOT store price: prices go stale, and re-adding a favorited part should
+        // always re-price it live via the configurator (origin_url) rather than reuse
+        // a number that may no longer be accurate.
+        await conn.execute(`
+            CREATE TABLE IF NOT EXISTS favorite_parts (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                part_no VARCHAR(255) NOT NULL,
+                description TEXT,
+                origin_url VARCHAR(500),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_user_part (user_id, part_no),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB;
+        `);
+        console.log("'favorite_parts' table checked/created.");
 
         // Create 'shipto_addresses' table if not exists with foreign key
         await conn.execute(`
