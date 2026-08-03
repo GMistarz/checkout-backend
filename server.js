@@ -675,6 +675,10 @@ app.post("/admin-login", loginLimiter, async (req, res) => {
             lastName: user.last_name,
             phone: user.phone
         };
+        // A real login always starts a genuine (non-impersonated) session — clears any
+        // stale isImpersonated=true left over if this session cookie was previously used
+        // to impersonate a customer without a full logout in between.
+        req.session.isImpersonated = false;
         // Assign a new CSRF token to the session on login
         req.session.csrfToken = generateCsrfToken();
         
@@ -1336,6 +1340,10 @@ app.post("/login", loginLimiter, async (req, res) => {
         lastName: user.last_name,
         phone: user.phone
     };
+    // A real login always starts a genuine (non-impersonated) session — clears any
+    // stale isImpersonated=true left over if this session cookie was previously used
+    // to impersonate a customer without a full logout in between.
+    req.session.isImpersonated = false;
     // Assign a fresh CSRF token on login
     req.session.csrfToken = generateCsrfToken();
 
