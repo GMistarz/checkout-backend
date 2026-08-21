@@ -475,8 +475,27 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
     }
 }
 
+// Backstop against duplicate login notifications for the same user in a short window
+// (a retried submit, a network retry, a held Enter key, etc.). In-memory is fine: a
+// duplicate submit always lands on the same process within seconds.
+const recentLoginNotifications = new Map(); // userId -> last-notified timestamp (ms)
+const LOGIN_NOTIFICATION_DEDUPE_MS = 15 * 1000;
+
 // Function to send login notification email (Admin)
 async function sendLoginNotificationEmail(userId, userEmail, firstName, lastName, ip) {
+
+    // Skip if we already notified for this user within the dedupe window.
+    const nowTs = Date.now();
+    const lastNotified = recentLoginNotifications.get(userId);
+    if (lastNotified && (nowTs - lastNotified) < LOGIN_NOTIFICATION_DEDUPE_MS) {
+        console.log(`Skipping duplicate login notification for user ${userId} (within ${LOGIN_NOTIFICATION_DEDUPE_MS / 1000}s of the previous one).`);
+        return;
+    }
+    recentLoginNotifications.set(userId, nowTs);
+    // Opportunistic cleanup so the map can't grow unbounded.
+    for (const [uid, ts] of recentLoginNotifications) {
+        if (nowTs - ts > LOGIN_NOTIFICATION_DEDUPE_MS) recentLoginNotifications.delete(uid);
+    }
 
     let conn;
     try {
@@ -1287,6 +1306,22 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
     }
 });
 
+// Net-price math shared with the storefront (checkout.html). Cart rows store the
+// LIST price in item.price; the customer's net price is list × (100 − discount)/100,
+// except that "special" part numbers are capped at a 25% discount when the company's
+// discount is greater than 25%. Keep this list in sync with checkout.html.
+const SPECIAL_PART_NUMBERS = ["1B", "2B", "3B", "4B", "5B", "TWAS", "C3", "C4", "C6", "FW", "PM", "SYS", "SYC", "SYB", "CVG"];
+
+function abandonedCartNetUnitPrice(item, discountPercentage) {
+    const listPrice = parseFloat(item.price) || 0;
+    const partNo = String(item.partNo || '').toUpperCase();
+    const isSpecialPart = SPECIAL_PART_NUMBERS.some(pn => partNo.includes(pn));
+    if (isSpecialPart && discountPercentage > 25) {
+        return listPrice * 0.75; // capped at a 25% discount
+    }
+    return listPrice * ((100 - discountPercentage) / 100);
+}
+
 app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
     const { startDate, endDate } = req.query;
     let conn;
@@ -1295,7 +1330,7 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
         let query = `
             SELECT uc.user_id, uc.cart_data, uc.updated_at,
                    u.email, u.first_name, u.last_name,
-                   c.name AS company_name
+                   c.name AS company_name, c.discount AS company_discount
             FROM user_carts uc
             JOIN users u ON u.id = uc.user_id
             LEFT JOIN companies c ON c.id = u.company_id
@@ -1320,7 +1355,11 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
                 try { items = JSON.parse(items); } catch(e) { items = []; }
             }
             if (!Array.isArray(items)) items = [];
-            const total = items.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 0)), 0);
+            const discount = parseFloat(row.company_discount) || 0;
+            // Total reflects the customer's discount (net), so it matches what the
+            // customer sees at checkout and the per-item breakdown in the detail view.
+            const netTotal  = items.reduce((sum, item) => sum + (abandonedCartNetUnitPrice(item, discount) * (parseFloat(item.quantity) || 0)), 0);
+            const listTotal = items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseFloat(item.quantity) || 0)), 0);
             return {
                 userId:      row.user_id,
                 date:        row.updated_at,
@@ -1328,7 +1367,9 @@ app.get("/admin/abandoned-carts-report", requireAdmin, async (req, res) => {
                 userName:    `${row.first_name || ''} ${row.last_name || ''}`.trim(),
                 email:       row.email,
                 itemCount:   items.length,
-                total:       total.toFixed(2),
+                discount:    discount,
+                total:       netTotal.toFixed(2),
+                listTotal:   listTotal.toFixed(2),
                 items:       items
             };
         }).filter(c => c.itemCount > 0);
@@ -1399,14 +1440,13 @@ app.post("/login", loginLimiter, async (req, res) => {
 
     // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
     const userEmailLower = user.email.toLowerCase();
-    if (!isExcludedFromLogging(userEmailLower)) {
-        const ip = getClientIp(req);
+    const shouldLogLogin = !isExcludedFromLogging(userEmailLower);
+    const clientIp = getClientIp(req);
+    if (shouldLogLogin) {
         await conn.execute(
             'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
-            [user.id, ip]
+            [user.id, clientIp]
         );
-        // Fire-and-forget login notification email (and SMS, if configured) — don't block the response on it.
-        sendLoginNotificationEmail(user.id, user.email, user.first_name, user.last_name, ip);
     }
     // --- END MODIFIED LOGIC ---
 
@@ -1416,6 +1456,14 @@ app.post("/login", loginLimiter, async (req, res) => {
         if (saveErr) {
             console.error("Login: session save error:", saveErr);
             return res.status(500).json({ error: "Login succeeded but session could not be saved. Please try again." });
+        }
+        // Notify only AFTER a confirmed-successful login. Previously this ran BEFORE
+        // session.save, so a transient save failure (e.g. a Render↔MySQL timeout) returned
+        // a 500, the user clicked Login again, and each attempt emitted its own email + SMS —
+        // producing the duplicate login notifications. sendLoginNotificationEmail also has a
+        // short-window idempotency guard as a backstop for any other double-trigger.
+        if (shouldLogLogin) {
+            sendLoginNotificationEmail(user.id, user.email, user.first_name, user.last_name, clientIp);
         }
         res.json({ message: "Login successful", role: user.role });
     });
