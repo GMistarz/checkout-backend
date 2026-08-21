@@ -1311,11 +1311,19 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
 // except that "special" part numbers are capped at a 25% discount when the company's
 // discount is greater than 25%. Keep this list in sync with checkout.html.
 const SPECIAL_PART_NUMBERS = ["1B", "2B", "3B", "4B", "5B", "TWAS", "C3", "C4", "C6", "FW", "PM", "SYS", "SYC", "SYB", "CVG"];
+// Product lines whose maximum discount is 25%, matched by part-number PREFIX
+// (like the classifier in search.php). Prefix (not substring) matching keeps
+// compound-gauge range codes such as "...PX..." from false-matching. Covers
+// Flow Meters (SM), Level Sensors (LMT/LMC) and Pressure Transmitters
+// (PI/PN/PX/PG/PY; PM is already in the list above). Bi-Metal (1B-5B),
+// Syphons (SY...) and Cables (C3/C4/C6) are already covered by the list above.
+const MAX_DISCOUNT_LINE_PREFIXES = ["SM", "LMT", "LMC", "PI", "PN", "PX", "PG", "PY"];
 
 function abandonedCartNetUnitPrice(item, discountPercentage) {
     const listPrice = parseFloat(item.price) || 0;
     const partNo = String(item.partNo || '').toUpperCase();
-    const isSpecialPart = SPECIAL_PART_NUMBERS.some(pn => partNo.includes(pn));
+    const isSpecialPart = SPECIAL_PART_NUMBERS.some(pn => partNo.includes(pn))
+        || MAX_DISCOUNT_LINE_PREFIXES.some(p => partNo.startsWith(p));
     if (isSpecialPart && discountPercentage > 25) {
         return listPrice * 0.75; // capped at a 25% discount
     }
