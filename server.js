@@ -1310,7 +1310,7 @@ app.get("/admin/users-report", requireAdmin, async (req, res) => {
 // LIST price in item.price; the customer's net price is list × (100 − discount)/100,
 // except that "special" part numbers are capped at a 25% discount when the company's
 // discount is greater than 25%. Keep this list in sync with checkout.html.
-const SPECIAL_PART_NUMBERS = ["1B", "2B", "3B", "4B", "5B", "TWAS", "C3", "C4", "C6", "FW", "PM", "SYS", "SYC", "SYB", "CVG"];
+const SPECIAL_PART_NUMBERS = ["1B", "2B", "3B", "4B", "5B", "TWAS", "C3", "C4", "C6", "FW", "PM", "SYS", "SYC", "SYB"];
 // Product lines whose maximum discount is 25%, matched by part-number PREFIX
 // (like the classifier in search.php). Prefix (not substring) matching keeps
 // compound-gauge range codes such as "...PX..." from false-matching. Covers
