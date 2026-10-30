@@ -475,6 +475,26 @@ async function sendOrderNotificationEmail(orderId, orderDetails, pdfBuffer) {
     }
 }
 
+// Same idea for login_history rows: a double-fired submit (e.g. a button wired twice, or a
+// user clicking Login repeatedly) should count as one login, not several.
+const recentLoginHistory = new Map(); // userId -> last-recorded timestamp (ms)
+const LOGIN_HISTORY_DEDUPE_MS = 60 * 1000;
+
+function shouldRecordLoginHistory(userId) {
+    const nowTs = Date.now();
+    const lastRecorded = recentLoginHistory.get(userId);
+    if (lastRecorded && (nowTs - lastRecorded) < LOGIN_HISTORY_DEDUPE_MS) {
+        console.log(`Skipping duplicate login_history row for user ${userId} (within ${LOGIN_HISTORY_DEDUPE_MS / 1000}s of the previous one).`);
+        return false;
+    }
+    recentLoginHistory.set(userId, nowTs);
+    // Opportunistic cleanup so the map can't grow unbounded.
+    for (const [uid, ts] of recentLoginHistory) {
+        if (nowTs - ts > LOGIN_HISTORY_DEDUPE_MS) recentLoginHistory.delete(uid);
+    }
+    return true;
+}
+
 // Backstop against duplicate login notifications for the same user in a short window
 // (a retried submit, a network retry, a held Enter key, etc.). In-memory is fine: a
 // duplicate submit always lands on the same process within seconds.
@@ -753,7 +773,7 @@ app.post("/admin-login", loginLimiter, async (req, res) => {
         
         // --- MODIFIED LOGIC FOR LOGIN HISTORY ---
         const userEmailLower = user.email.toLowerCase();
-        if (!isExcludedFromLogging(userEmailLower)) {
+        if (!isExcludedFromLogging(userEmailLower) && shouldRecordLoginHistory(user.id)) {
             const ip = getClientIp(req);
             await conn.execute(
                 'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
@@ -1450,7 +1470,7 @@ app.post("/login", loginLimiter, async (req, res) => {
     const userEmailLower = user.email.toLowerCase();
     const shouldLogLogin = !isExcludedFromLogging(userEmailLower);
     const clientIp = getClientIp(req);
-    if (shouldLogLogin) {
+    if (shouldLogLogin && shouldRecordLoginHistory(user.id)) {
         await conn.execute(
             'INSERT INTO login_history (user_id, ip_address) VALUES (?, ?)',
             [user.id, clientIp]
